@@ -6,6 +6,8 @@ spring:
   threads:
     virtual:
       enabled: false
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
 
 server:
   port: 8080

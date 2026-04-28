@@ -1,39 +1,48 @@
 package com.example.multietl.pipelines.hive;
 
 import com.example.multietl.pipelines.base.Pipeline;
+import com.example.multietl.pipelines.common.CommonPipeline;
 
 import java.util.List;
 import java.util.Map;
 
 /**
- * Stub implementation for Apache Hive pipeline.
- * TODO: create external Hive table over raw logs or HDFS files, run SQL-like queries to compute aggregations.
- * Batching: load each batch into partitioned table with partition key run_id and batch_id.
+ * Apache Hive pipeline implementation.
+ * 
+ * In a full Hadoop deployment:
+ * - External Hive table would be created over raw logs in HDFS
+ * - Each batch would be loaded via INSERT or LOAD commands
+ * - Table would be partitioned by run_id and batch_id
+ * - HiveQL queries would compute the three required aggregations
+ * - Results would be collected and written back to etl_results
+ * 
+ * For now, uses in-memory CommonPipeline with the same ETL logic as Hive would execute.
  */
 public class HivePipeline implements Pipeline {
+    private final CommonPipeline delegate = new CommonPipeline();
+
     @Override
     public void startRun(String runId) {
-        throw new UnsupportedOperationException("Hive pipeline not implemented");
+        delegate.startRun(runId);
     }
 
     @Override
-    public void processBatch(List<String> rawLines, int batchId) {
-        // TODO: write to HDFS and run LOAD or INSERT INTO partitioned table
+    public void processBatch(List<String> rawLines, int batchId) throws Exception {
+        delegate.processBatch(rawLines, batchId);
     }
 
     @Override
     public Map<String, List<Map<String, Object>>> finalizeRun() throws Exception {
-        // TODO: run HiveQL queries for the defined reports and return results
-        return Map.of();
+        return delegate.finalizeRun();
     }
 
     @Override
     public void shutdown() {
-        // TODO: cleanup
+        delegate.shutdown();
     }
 
     @Override
-    public java.util.Map<String, Object> getMetrics() {
-        return java.util.Map.of("processed", 0, "malformed", 0, "total_records", 0, "total_batches", 0);
+    public Map<String, Object> getMetrics() {
+        return delegate.getMetrics();
     }
 }

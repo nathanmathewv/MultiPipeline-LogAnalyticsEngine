@@ -8,7 +8,7 @@ import java.nio.file.Path;
 public class ApplicationConfiguration {
 
     @Bean
-    public AppConfig appConfig() {
+    public AppConfig appConfig() throws Exception {
         return new AppConfig(Path.of("app/config/config.yaml"));
     }
 
