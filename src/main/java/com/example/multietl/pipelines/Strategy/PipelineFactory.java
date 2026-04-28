@@ -10,6 +10,7 @@ public class PipelineFactory {
     public static Pipeline create(String name, String uriOrConfig) {
         switch (name.toLowerCase()) {
             case "mongodb":
+                System.out.println("Creating MongoPipeline with URI/Config: " + uriOrConfig);
                 return new MongoPipeline(uriOrConfig != null ? uriOrConfig : "mongodb://localhost:27017", "web_logs");
             case "pig":
                 return new PigPipeline();
