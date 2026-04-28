@@ -3,10 +3,10 @@ app:
   batch_size: 1000
 
 mongodb:
-  uri: mongodb://localhost:27017
+  uri: mongodb://root:secret@localhost:27017/admin
   database: web_logs
 
 jdbc:
-  url: jdbc:postgresql://localhost:5432/etl_results
+  url: jdbc:postgresql://localhost:5433/etl_results
   user: etl
   password: secret

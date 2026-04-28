@@ -42,7 +42,7 @@ public class Main {
             
             var dbLoader = new com.example.multietl.loader.DbLoader(config.getJdbcUrl(), config.getJdbcUser(), config.getJdbcPassword());
             var controller = new com.example.multietl.orchestrator.Controller(dbLoader);
-            controller.run(pipelineName, inputFile, batchSize);
+            controller.run(pipelineName, inputFile, batchSize, null);
             
             logger.info("ETL completed successfully");
         } catch (Exception e) {

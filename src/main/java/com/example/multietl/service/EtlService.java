@@ -47,14 +47,25 @@ public class EtlService {
             logger.info("Starting job {}: pipeline={}, input={}, batchSize={}", jobId, pipeline, inputPath, batchSize);
             
             var controller = new Controller(dbLoader);
-            controller.run(pipeline, inputPath, batchSize);
-            
             EtlJob job = jobTracker.getJob(jobId);
+            Map<String, Object> finalMetrics = controller.run(pipeline, inputPath, batchSize, metrics -> {
+                if (job != null) {
+                    job.totalRecords = ((Number) metrics.getOrDefault("processed", 0L)).longValue() + ((Number) metrics.getOrDefault("malformed", 0L)).longValue();
+                    job.malformedRecords = ((Number) metrics.getOrDefault("malformed", 0L)).longValue();
+                }
+            });
+            
             if (job != null) {
-                job.markCompleted(0, 0, Map.of());
+                long total = ((Number) finalMetrics.getOrDefault("total_records", 0L)).longValue();
+                long malformed = ((Number) finalMetrics.getOrDefault("malformed", 0L)).longValue();
+                
+                @SuppressWarnings("unchecked")
+                Map<String, Object> results = (Map<String, Object>) finalMetrics.getOrDefault("results", Map.of());
+                
+                job.markCompleted(total, malformed, results);
                 logger.info("Job {} completed successfully", jobId);
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             logger.error("Job {} failed", jobId, e);
             EtlJob job = jobTracker.getJob(jobId);
             if (job != null) {

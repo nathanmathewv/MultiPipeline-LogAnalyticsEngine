@@ -86,7 +86,7 @@ public class MongoPipeline implements Pipeline {
             row.put("batch_id", 0);
             row.put("log_date", id.getString("log_date"));
             row.put("status_code", id.getInteger("status_code"));
-            row.put("request_count", d.getLong("request_count"));
+            row.put("request_count", ((Number) d.get("request_count")).longValue());
             row.put("total_bytes", d.get("total_bytes"));
             q1.add(row);
         }
@@ -140,7 +140,7 @@ public class MongoPipeline implements Pipeline {
                 .append("log_hour", "$_id.log_hour")
                 .append("error_request_count", 1)
                 .append("total_request_count", 1)
-                .append("distinct_error_hosts", new Document("$size", new Document("$setDifference", Arrays.asList("$error_hosts", Arrays.asList(null)))))
+                .append("distinct_error_hosts", new Document("$size", new Document("$setDifference", Arrays.asList("$error_hosts", java.util.Collections.singletonList(null)))))
                 .append("error_rate", new Document("$cond", Arrays.asList(
                     new Document("$eq", Arrays.asList("$total_request_count", 0)),
                     0,

@@ -23,20 +23,22 @@ public class Controller {
         this.dbLoader = dbLoader;
     }
 
-    public void run(String pipelineName, Path inputFile, int batchSize) throws Exception {
+    public Map<String, Object> run(String pipelineName, Path inputFile, int batchSize, java.util.function.Consumer<Map<String, Object>> metricsCallback) throws Exception {
         String runId = UUID.randomUUID().toString();
         Pipeline pipeline = PipelineFactory.create(pipelineName, null);
         pipeline.startRun(runId);
 
         Instant start = Instant.now();
-        List<List<String>> batches = BatchManager.splitFile(inputFile, batchSize);
-        int batchId = 1;
-        for (List<String> batch : batches) {
+        int[] batchIdRef = {1};
+        BatchManager.processFileInBatches(inputFile, batchSize, batch -> {
+            int batchId = batchIdRef[0]++;
             logger.info("Starting batch {} (size={})", batchId, batch.size());
             pipeline.processBatch(batch, batchId);
             logger.info("Finished batch {}", batchId);
-            batchId++;
-        }
+            if (metricsCallback != null) {
+                metricsCallback.accept(pipeline.getMetrics());
+            }
+        });
 
         Map<String, List<Map<String, Object>>> results = pipeline.finalizeRun();
         Instant end = Instant.now();
@@ -56,5 +58,8 @@ public class Controller {
 
         Reporter reporter = new Reporter(dbLoader);
         reporter.printRunSummary(runId);
+        
+        metrics.put("results", results);
+        return metrics;
     }
 }
