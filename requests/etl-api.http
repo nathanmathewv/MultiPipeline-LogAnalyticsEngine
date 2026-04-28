@@ -1,0 +1,41 @@
+@baseUrl = http://localhost:8080
+@pipeline = mongodb
+@file = sample.log
+@batchSize = 5
+
+### List dataset files
+GET {{baseUrl}}/api/etl/dataset/files
+> {%
+client.test("status is 200", () => client.assert(response.status === 200));
+client.test("files is array", () => client.assert(Array.isArray(response.body.files)));
+%}
+
+### Get dataset stats
+GET {{baseUrl}}/api/etl/dataset/stats
+> {%
+client.test("status is 200", () => client.assert(response.status === 200));
+client.test("stats is array", () => client.assert(Array.isArray(response.body.stats)));
+%}
+
+### Submit a job
+# @name submitJob
+POST {{baseUrl}}/api/etl/run?pipeline={{pipeline}}&file={{file}}&batchSize={{batchSize}}
+> {%
+client.test("status is 200", () => client.assert(response.status === 200));
+client.test("jobId present", () => client.assert(!!response.body.jobId));
+client.test("status field present", () => client.assert(!!response.body.status));
+%}
+
+### Check job status
+GET {{baseUrl}}/api/etl/status/{{submitJob.response.body.jobId}}
+> {%
+client.test("status is 200", () => client.assert(response.status === 200));
+client.test("job status present", () => client.assert(!!response.body.status));
+%}
+
+### Submit invalid job (expected 400)
+POST {{baseUrl}}/api/etl/run?pipeline={{pipeline}}&file=missing.log&batchSize={{batchSize}}
+> {%
+client.test("status is 400", () => client.assert(response.status === 400));
+client.test("error present", () => client.assert(!!response.body.error));
+%}

@@ -1,0 +1,22 @@
+target/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.DS_Store
+.vscode/
+src/main/resources/logback-test.xml
+*.log
+node_modules/
+dist/
+build/
+.gradle/
+postgres_data/
+mongo_data/
+
+# Dataset files - must be placed in data/raw/ locally
+data/raw/NASA_access_log_*
+data/raw/medium_*.log
+data/raw/*.log.bak
+

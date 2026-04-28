@@ -1,0 +1,83 @@
+package com.example.multietl.loader;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.sql.*;
+import java.util.List;
+import java.util.Map;
+
+public class DbLoader {
+    private static final Logger logger = LoggerFactory.getLogger(DbLoader.class);
+
+    private final String url;
+    private final String user;
+    private final String password;
+
+    public DbLoader(String url, String user, String password) {
+        this.url = url;
+        this.user = user;
+        this.password = password;
+    }
+
+    private Connection getConn() throws SQLException {
+        return DriverManager.getConnection(url, user, password);
+    }
+
+    public void insertRunMetadata(String runId, String pipelineName, int batchSize, double avgBatchSize,
+                                  long totalRecords, long malformedRecords, int totalBatches, long runtimeMs) throws SQLException {
+        String sql = "INSERT INTO run_metadata(run_id,pipeline_name,batch_size,avg_batch_size,total_records,malformed_records,total_batches,runtime_ms,created_at) VALUES(?,?,?,?,?,?,?,?,now())";
+        try (Connection c = getConn(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, runId);
+            ps.setString(2, pipelineName);
+            ps.setInt(3, batchSize);
+            ps.setDouble(4, avgBatchSize);
+            ps.setLong(5, totalRecords);
+            ps.setLong(6, malformedRecords);
+            ps.setInt(7, totalBatches);
+            ps.setLong(8, runtimeMs);
+            ps.executeUpdate();
+            logger.info("Inserted run_metadata for {}", runId);
+        }
+    }
+
+    public void insertEtlResults(String runId, String pipelineName, Map<String, List<Map<String, Object>>> results) throws SQLException {
+        String sql = "INSERT INTO etl_results(run_id,pipeline_name,batch_id,query_name,k1,k2,m1,m2,m3,m4,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,now())";
+        try (Connection c = getConn(); PreparedStatement ps = c.prepareStatement(sql)) {
+            for (Map.Entry<String, List<Map<String, Object>>> e : results.entrySet()) {
+                String queryName = e.getKey();
+                for (Map<String, Object> row : e.getValue()) {
+                    ps.setString(1, runId);
+                    ps.setString(2, pipelineName);
+                    ps.setObject(3, row.getOrDefault("batch_id", 0));
+                    ps.setString(4, queryName);
+                    ps.setObject(5, row.getOrDefault("k1", row.getOrDefault("log_date", row.getOrDefault("resource_path", null))));
+                    ps.setObject(6, row.getOrDefault("k2", row.getOrDefault("status_code", row.getOrDefault("log_hour", null))));
+                    ps.setObject(7, row.getOrDefault("m1", row.getOrDefault("request_count", row.getOrDefault("error_request_count", null))));
+                    ps.setObject(8, row.getOrDefault("m2", row.getOrDefault("total_bytes", row.getOrDefault("total_request_count", null))));
+                    ps.setObject(9, row.getOrDefault("m3", row.getOrDefault("distinct_host_count", row.getOrDefault("distinct_error_hosts", null))));
+                    ps.setObject(10, row.getOrDefault("m4", row.getOrDefault("error_rate", null)));
+                    ps.addBatch();
+                }
+            }
+            ps.executeBatch();
+            logger.info("Inserted etl_results for run {}", runId);
+        }
+    }
+
+    public ResultSet queryRunMetadata(String runId) throws SQLException {
+        Connection c = getConn();
+        String sql = "SELECT * FROM run_metadata WHERE run_id = ?";
+        PreparedStatement ps = c.prepareStatement(sql);
+        ps.setString(1, runId);
+        return ps.executeQuery();
+    }
+
+    public ResultSet queryEtlResults(String runId) throws SQLException {
+        Connection c = getConn();
+        String sql = "SELECT * FROM etl_results WHERE run_id = ? ORDER BY query_name";
+        PreparedStatement ps = c.prepareStatement(sql);
+        ps.setString(1, runId);
+        return ps.executeQuery();
+    }
+}
