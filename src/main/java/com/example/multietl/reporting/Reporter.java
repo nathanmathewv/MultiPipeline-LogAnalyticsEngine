@@ -2,8 +2,13 @@ package com.example.multietl.reporting;
 
 import com.example.multietl.loader.DbLoader;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 public class Reporter {
@@ -14,53 +19,116 @@ public class Reporter {
     }
 
     public void printRunSummary(String runId) {
-        System.out.println("===========================================");
-        System.out.println("        ETL RUN SUMMARY");
-        System.out.println("===========================================");
-        
+        printRunSummary(runId, true, false);
+    }
+
+    public void printRunSummary(String runId, boolean printToConsole, boolean writeToFile) {
+        String content = buildRunSummary(runId);
+        if (printToConsole) {
+            System.out.print(content);
+        }
+        if (writeToFile) {
+            writeResultsFile(runId, content);
+        }
+    }
+
+    private String buildRunSummary(String runId) {
+        StringBuilder sb = new StringBuilder();
+        appendLine(sb, "===========================================");
+        appendLine(sb, "        ETL RUN SUMMARY");
+        appendLine(sb, "===========================================");
+
         try (ResultSet rs = dbLoader.queryRunMetadata(runId)) {
             if (rs.next()) {
-                System.out.println("Run ID:           " + rs.getString("run_id"));
-                System.out.println("Pipeline:         " + rs.getString("pipeline_name"));
-                System.out.println("Batch ID:         all");
-                System.out.println("Batch size:       " + rs.getInt("batch_size"));
-                System.out.println("Avg batch size:   " + String.format("%.2f", rs.getDouble("avg_batch_size")));
-                System.out.println("Total records:    " + rs.getLong("total_records"));
-                System.out.println("Malformed records: " + rs.getLong("malformed_records"));
-                System.out.println("Total batches:    " + rs.getInt("total_batches"));
-                System.out.println("Runtime (ms):     " + rs.getLong("runtime_ms"));
+                appendLine(sb, "Run ID:           " + rs.getString("run_id"));
+                appendLine(sb, "Pipeline:         " + rs.getString("pipeline_name"));
+                appendLine(sb, "Batch ID:         all");
+                appendLine(sb, "Batch size (days): " + rs.getInt("batch_size"));
+                appendLine(sb, "Avg batch size:   " + String.format("%.2f", rs.getDouble("avg_batch_size")));
+                appendLine(sb, "Total records:    " + rs.getLong("total_records"));
+                appendLine(sb, "Malformed records: " + rs.getLong("malformed_records"));
+                appendLine(sb, "Total batches:    " + rs.getInt("total_batches"));
+                appendLine(sb, "Runtime (ms):     " + rs.getLong("runtime_ms"));
             } else {
-                System.out.println("No run metadata found for " + runId);
-                return;
+                appendLine(sb, "No run metadata found for " + runId);
+                return sb.toString();
             }
         } catch (SQLException e) {
-            System.err.println("Failed to read run metadata: " + e.getMessage());
-            return;
+            appendLine(sb, "Failed to read run metadata: " + e.getMessage());
+            return sb.toString();
         }
 
-        System.out.println("\n===========================================");
-        System.out.println("        QUERY RESULTS");
-        System.out.println("===========================================\n");
+        appendLine(sb, "\n===========================================");
+        appendLine(sb, "        BATCH METADATA");
+        appendLine(sb, "===========================================");
+
+        try (ResultSet rs = dbLoader.queryBatchMetadata(runId)) {
+            boolean any = false;
+            while (rs.next()) {
+                any = true;
+                appendLine(sb, String.format("Batch %s: %s to %s | Records: %s | Malformed: %s | Days: %s",
+                    rs.getObject("batch_id"),
+                    rs.getString("batch_start_date"),
+                    rs.getString("batch_end_date"),
+                    rs.getObject("records_total"),
+                    rs.getObject("malformed_records"),
+                    rs.getObject("batch_size_days")));
+            }
+            if (!any) {
+                appendLine(sb, "No batch metadata found.");
+            }
+        } catch (SQLException e) {
+            appendLine(sb, "Failed to read batch metadata: " + e.getMessage());
+        }
+
+        appendLine(sb, "\n===========================================");
+        appendLine(sb, "        MALFORMED SUMMARY");
+        appendLine(sb, "===========================================");
+
+        try (ResultSet rs = dbLoader.queryMalformedSummary(runId)) {
+            if (rs.next()) {
+                appendLine(sb, "Total records:    " + rs.getLong("total_records"));
+                appendLine(sb, "Malformed records: " + rs.getLong("malformed_records"));
+            } else {
+                appendLine(sb, "No malformed summary found.");
+            }
+        } catch (SQLException e) {
+            appendLine(sb, "Failed to read malformed summary: " + e.getMessage());
+        }
+
+        appendLine(sb, "\n===========================================");
+        appendLine(sb, "        QUERY RESULTS");
+        appendLine(sb, "===========================================\n");
 
         try (ResultSet r2 = dbLoader.queryEtlResults(runId)) {
-            Map<String, List<String>> resultsByQuery = new LinkedHashMap<>();
+            Map<String, Map<String, List<String>>> resultsByScope = new LinkedHashMap<>();
             while (r2.next()) {
+                String scope = r2.getString("scope");
+                String scopeKey = scope == null ? "all" : scope;
                 String queryName = r2.getString("query_name");
                 String row = formatRow(queryName, r2);
-                resultsByQuery.computeIfAbsent(queryName, k -> new ArrayList<>()).add(row);
+                resultsByScope
+                    .computeIfAbsent(scopeKey, k -> new LinkedHashMap<>())
+                    .computeIfAbsent(queryName, k -> new ArrayList<>())
+                    .add(row);
             }
 
-            for (Map.Entry<String, List<String>> e : resultsByQuery.entrySet()) {
-                System.out.println("Query: " + e.getKey());
-                System.out.println("-------------------------------------------");
-                for (String row : e.getValue()) {
-                    System.out.println(row);
+            for (Map.Entry<String, Map<String, List<String>>> scopeEntry : resultsByScope.entrySet()) {
+                appendLine(sb, "Scope: " + scopeEntry.getKey());
+                appendLine(sb, "-------------------------------------------");
+                for (Map.Entry<String, List<String>> queryEntry : scopeEntry.getValue().entrySet()) {
+                    appendLine(sb, "Query: " + queryEntry.getKey());
+                    for (String row : queryEntry.getValue()) {
+                        appendLine(sb, row);
+                    }
+                    appendLine(sb, "");
                 }
-                System.out.println();
             }
         } catch (SQLException e) {
-            System.err.println("Failed to read etl results: " + e.getMessage());
+            appendLine(sb, "Failed to read etl results: " + e.getMessage());
         }
+
+        return sb.toString();
     }
 
     private String formatRow(String queryName, ResultSet rs) throws SQLException {
@@ -76,5 +144,21 @@ public class Reporter {
         }
         return String.format("  k1=%s k2=%s m1=%s m2=%s m3=%s m4=%s",
                 rs.getObject("k1"), rs.getObject("k2"), rs.getObject("m1"), rs.getObject("m2"), rs.getObject("m3"), rs.getObject("m4"));
+    }
+
+    private void appendLine(StringBuilder sb, String line) {
+        sb.append(line).append("\n");
+    }
+
+    private void writeResultsFile(String runId, String content) {
+        try {
+            Path dir = Path.of("results");
+            Files.createDirectories(dir);
+            String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+            Path file = dir.resolve("etl_run_" + runId + "_" + ts + ".log");
+            Files.writeString(file, content, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            System.err.println("Failed to write results log: " + e.getMessage());
+        }
     }
 }

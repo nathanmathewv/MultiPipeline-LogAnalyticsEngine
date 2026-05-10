@@ -35,6 +35,17 @@ services:
       timeout: 5s
       retries: 5
 
+  pig:
+    build:
+      context: .
+      dockerfile: app/pig/Dockerfile
+    image: multietl-pig:latest
+    container_name: etl_pig
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    command: ["sleep", "infinity"]
+
 volumes:
   postgres_data:
   mongo_data:

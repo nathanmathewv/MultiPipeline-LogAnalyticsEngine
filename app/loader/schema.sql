@@ -18,11 +18,34 @@ CREATE TABLE IF NOT EXISTS etl_results (
   pipeline_name TEXT NOT NULL,
   batch_id INTEGER,
   query_name TEXT NOT NULL,
+  scope TEXT,
   k1 TEXT,
   k2 TEXT,
   m1 DOUBLE PRECISION,
   m2 DOUBLE PRECISION,
   m3 DOUBLE PRECISION,
   m4 DOUBLE PRECISION,
+  created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS batch_metadata (
+  id SERIAL PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  pipeline_name TEXT NOT NULL,
+  batch_id INTEGER NOT NULL,
+  batch_start_date TEXT,
+  batch_end_date TEXT,
+  batch_size_days INTEGER,
+  records_total BIGINT,
+  malformed_records BIGINT,
+  created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS malformed_summary (
+  id SERIAL PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  pipeline_name TEXT NOT NULL,
+  total_records BIGINT,
+  malformed_records BIGINT,
   created_at TIMESTAMP DEFAULT now()
 );

@@ -28,10 +28,10 @@ public class EtlController {
     public ResponseEntity<?> startJob(
             @RequestParam String pipeline,
             @RequestParam String file,
-            @RequestParam(required = false) Integer batchSize) {
+            @RequestParam(required = false) Integer batchDays) {
         try {
-            logger.info("Received ETL job request: pipeline={}, file={}, batchSize={}", pipeline, file, batchSize);
-            String jobId = etlService.submitJob(pipeline, file, batchSize);
+            logger.info("Received ETL job request: pipeline={}, file={}, batchDays={}", pipeline, file, batchDays);
+            String jobId = etlService.submitJob(pipeline, file, batchDays);
             return ResponseEntity.ok(Map.of(
                     "jobId", jobId,
                     "message", "ETL job submitted successfully",

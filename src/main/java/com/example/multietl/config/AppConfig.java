@@ -27,6 +27,16 @@ public class AppConfig {
         return ((Number) app.getOrDefault("batch_size", 1000)).intValue();
     }
 
+    public int getIngestChunkSize() {
+        Map<String, Object> app = getSection("app");
+        return ((Number) app.getOrDefault("ingest_chunk_size", getBatchSize())).intValue();
+    }
+
+    public int getBatchSizeDays() {
+        Map<String, Object> app = getSection("app");
+        return ((Number) app.getOrDefault("batch_size_days", 1)).intValue();
+    }
+
     public String getDataDir() {
         Map<String, Object> app = getSection("app");
         return (String) app.getOrDefault("data_dir", "data/raw");
@@ -55,5 +65,15 @@ public class AppConfig {
     public String getJdbcPassword() {
         Map<String, Object> jdbc = getSection("jdbc");
         return (String) jdbc.getOrDefault("password", "secret");
+    }
+
+    public String getPigImage() {
+        Map<String, Object> pig = getSection("pig");
+        return (String) pig.getOrDefault("image", "multietl-pig:latest");
+    }
+
+    public String getPigScriptPath() {
+        Map<String, Object> pig = getSection("pig");
+        return (String) pig.getOrDefault("script", "app/pig/etl.pig");
     }
 }

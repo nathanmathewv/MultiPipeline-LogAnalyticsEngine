@@ -3,10 +3,12 @@ package com.example.multietl.service;
 import com.example.multietl.config.AppConfig;
 import com.example.multietl.loader.DbLoader;
 import com.example.multietl.orchestrator.Controller;
+import com.example.multietl.pipelines.base.QueryPlan;
 import com.example.multietl.service.EtlJobTracker.EtlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -25,30 +27,37 @@ public class EtlService {
         this.jobTracker = EtlJobTracker.getInstance();
     }
 
-    public String submitJob(String pipeline, String inputFile, Integer batchSize) throws Exception {
+    public String submitJob(String pipeline, String inputFile, Integer batchSizeDays) throws Exception {
         String jobId = UUID.randomUUID().toString();
-        int actualBatchSize = batchSize != null ? batchSize : config.getBatchSize();
+        int actualBatchSizeDays = batchSizeDays != null ? batchSizeDays : config.getBatchSizeDays();
+        int ingestChunkSize = config.getIngestChunkSize();
         
-        Path inputPath = Path.of("data/raw", inputFile);
-        if (!inputPath.toFile().exists()) {
-            throw new IllegalArgumentException("Input file not found: " + inputPath);
+        List<Path> inputPaths = resolveInputFiles(inputFile, config.getDataDir());
+        if (inputPaths.isEmpty()) {
+            throw new IllegalArgumentException("Input file(s) not found for: " + inputFile);
         }
 
-        EtlJob job = new EtlJob(jobId, pipeline, inputFile, actualBatchSize);
+        EtlJob job = new EtlJob(jobId, pipeline, inputFile, actualBatchSizeDays);
         jobTracker.addJob(jobId, job);
 
-        executorService.submit(() -> runJob(jobId, pipeline, inputPath, actualBatchSize));
+        QueryPlan queryPlan = QueryPlan.all(true);
+        executorService.submit(() -> runJob(jobId, pipeline, inputPaths, ingestChunkSize, actualBatchSizeDays, queryPlan));
         
         return jobId;
     }
 
-    private void runJob(String jobId, String pipeline, Path inputPath, int batchSize) {
+    private void runJob(String jobId,
+                        String pipeline,
+                        List<Path> inputPaths,
+                        int ingestChunkSize,
+                        int batchSizeDays,
+                        QueryPlan queryPlan) {
         try {
-            logger.info("Starting job {}: pipeline={}, input={}, batchSize={}", jobId, pipeline, inputPath, batchSize);
+            logger.info("Starting job {}: pipeline={}, input={}, batchSizeDays={}", jobId, pipeline, inputPaths, batchSizeDays);
             
-            var controller = new Controller(dbLoader);
+            var controller = new Controller(dbLoader, config);
             EtlJob job = jobTracker.getJob(jobId);
-            Map<String, Object> finalMetrics = controller.run(pipeline, inputPath, batchSize, metrics -> {
+            Map<String, Object> finalMetrics = controller.run(pipeline, inputPaths, ingestChunkSize, batchSizeDays, queryPlan, metrics -> {
                 if (job != null) {
                     job.totalRecords = ((Number) metrics.getOrDefault("processed", 0L)).longValue() + ((Number) metrics.getOrDefault("malformed", 0L)).longValue();
                     job.malformedRecords = ((Number) metrics.getOrDefault("malformed", 0L)).longValue();
@@ -80,5 +89,22 @@ public class EtlService {
 
     public void shutdown() {
         executorService.shutdown();
+    }
+
+    private List<Path> resolveInputFiles(String inputFile, String dataDir) {
+        if (inputFile == null || inputFile.isBlank() || inputFile.equalsIgnoreCase("all")) {
+            List<Path> files = new java.util.ArrayList<>();
+            Path july = Path.of(dataDir, "NASA_access_log_Jul95");
+            Path aug = Path.of(dataDir, "NASA_access_log_Aug95");
+            if (july.toFile().exists()) files.add(july);
+            if (aug.toFile().exists()) files.add(aug);
+            return files;
+        }
+
+        Path inputPath = Path.of(dataDir, inputFile);
+        if (inputPath.toFile().exists()) {
+            return List.of(inputPath);
+        }
+        return List.of();
     }
 }

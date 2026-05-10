@@ -3,6 +3,7 @@ target/
 *.iml
 *.swp
 *.swo
+*.pdf
 *~
 .DS_Store
 .vscode/

@@ -1,6 +1,7 @@
 package com.example.multietl.pipelines.hive;
 
 import com.example.multietl.pipelines.base.Pipeline;
+import com.example.multietl.pipelines.base.QueryPlan;
 import com.example.multietl.pipelines.common.CommonPipeline;
 
 import java.util.List;
@@ -22,8 +23,8 @@ public class HivePipeline implements Pipeline {
     private final CommonPipeline delegate = new CommonPipeline();
 
     @Override
-    public void startRun(String runId) {
-        delegate.startRun(runId);
+    public void startRun(String runId, int batchSizeDays) {
+        delegate.startRun(runId, batchSizeDays);
     }
 
     @Override
@@ -32,8 +33,8 @@ public class HivePipeline implements Pipeline {
     }
 
     @Override
-    public Map<String, List<Map<String, Object>>> finalizeRun() throws Exception {
-        return delegate.finalizeRun();
+    public Map<String, List<Map<String, Object>>> finalizeRun(QueryPlan plan) throws Exception {
+        return delegate.finalizeRun(plan);
     }
 
     @Override
@@ -44,5 +45,10 @@ public class HivePipeline implements Pipeline {
     @Override
     public Map<String, Object> getMetrics() {
         return delegate.getMetrics();
+    }
+
+    @Override
+    public List<Map<String, Object>> getBatchSummaries() {
+        return delegate.getBatchSummaries();
     }
 }

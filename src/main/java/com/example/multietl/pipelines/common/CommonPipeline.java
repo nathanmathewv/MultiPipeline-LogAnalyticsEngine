@@ -3,6 +3,8 @@ package com.example.multietl.pipelines.common;
 import com.example.multietl.parser.LogParser;
 import com.example.multietl.parser.LogRecord;
 import com.example.multietl.pipelines.base.Pipeline;
+import com.example.multietl.pipelines.base.QueryPlan;
+import com.example.multietl.pipelines.base.QueryType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,21 +22,30 @@ public class CommonPipeline implements Pipeline {
     private String runId;
     private long malformedCount = 0;
     private long processed = 0;
-    private int batchCount = 0;
+    private long rawLoaded = 0;
+    private int ingestChunks = 0;
+    private int batchSizeDays = 1;
+    private final List<String> rawLines = new ArrayList<>();
     private final List<LogRecord> allRecords = new ArrayList<>();
+    private final Map<String, long[]> dateStats = new HashMap<>();
+    private List<Map<String, Object>> batchSummaries = new ArrayList<>();
 
     @Override
-    public void startRun(String runId) {
+    public void startRun(String runId, int batchSizeDays) {
         this.runId = runId;
-        logger.info("CommonPipeline started run {}", runId);
+        this.batchSizeDays = Math.max(1, batchSizeDays);
+        logger.info("CommonPipeline started run {} with batchSizeDays={}", runId, this.batchSizeDays);
     }
 
     @Override
-    public void processBatch(List<String> rawLines, int batchId) throws Exception {
-        batchCount++;
+    public void processBatch(List<String> rawLines, int chunkId) throws Exception {
+        ingestChunks++;
         int batchProcessed = 0;
         int batchMalformed = 0;
-        
+
+        this.rawLines.addAll(rawLines);
+        rawLoaded += rawLines.size();
+
         for (String line : rawLines) {
             LogParser.ParseResult r = parser.parse(line);
             allRecords.add(r.record);
@@ -45,27 +56,55 @@ public class CommonPipeline implements Pipeline {
                 processed++;
                 batchProcessed++;
             }
+            String logDate = r.record.getLogDate();
+            if (logDate != null) {
+                long[] stats = dateStats.computeIfAbsent(logDate, k -> new long[] {0L, 0L});
+                stats[0]++;
+                if (!r.success) {
+                    stats[1]++;
+                }
+            }
         }
-        logger.info("Processed batch {}: {} good records, {} malformed", batchId, batchProcessed, batchMalformed);
+        logger.info("Processed ingest chunk {}: {} good records, {} malformed", chunkId, batchProcessed, batchMalformed);
     }
 
     @Override
-    public Map<String, List<Map<String, Object>>> finalizeRun() throws Exception {
+    public Map<String, List<Map<String, Object>>> finalizeRun(QueryPlan plan) throws Exception {
         Map<String, List<Map<String, Object>>> results = new LinkedHashMap<>();
-        
+
         // Filter out malformed records for aggregations
         List<LogRecord> goodRecords = allRecords.stream()
             .filter(r -> !r.isMalformed())
             .collect(Collectors.toList());
 
-        // Query 1: Daily Traffic Summary (log_date, status_code -> request_count, total_bytes)
-        results.put("daily_traffic_summary", computeQuery1(goodRecords));
+        batchSummaries = buildBatchSummaries();
 
-        // Query 2: Top 20 Requested Resources
-        results.put("top_resources", computeQuery2(goodRecords));
-
-        // Query 3: Hourly Error Analysis (log_date, log_hour -> error metrics)
-        results.put("hourly_error_analysis", computeQuery3(goodRecords));
+        if (plan.isSplitByMonth()) {
+            Map<String, List<LogRecord>> byMonth = groupByMonth(goodRecords);
+            for (Map.Entry<String, List<LogRecord>> entry : byMonth.entrySet()) {
+                String month = entry.getKey();
+                List<LogRecord> monthRecords = entry.getValue();
+                if (plan.getQueries().contains(QueryType.DAILY_TRAFFIC_SUMMARY)) {
+                    results.put(scopedKey(QueryType.DAILY_TRAFFIC_SUMMARY, month), computeQuery1(monthRecords));
+                }
+                if (plan.getQueries().contains(QueryType.TOP_RESOURCES)) {
+                    results.put(scopedKey(QueryType.TOP_RESOURCES, month), computeQuery2(monthRecords));
+                }
+                if (plan.getQueries().contains(QueryType.HOURLY_ERROR_ANALYSIS)) {
+                    results.put(scopedKey(QueryType.HOURLY_ERROR_ANALYSIS, month), computeQuery3(monthRecords));
+                }
+            }
+        } else {
+            if (plan.getQueries().contains(QueryType.DAILY_TRAFFIC_SUMMARY)) {
+                results.put(QueryType.DAILY_TRAFFIC_SUMMARY.getKey(), computeQuery1(goodRecords));
+            }
+            if (plan.getQueries().contains(QueryType.TOP_RESOURCES)) {
+                results.put(QueryType.TOP_RESOURCES.getKey(), computeQuery2(goodRecords));
+            }
+            if (plan.getQueries().contains(QueryType.HOURLY_ERROR_ANALYSIS)) {
+                results.put(QueryType.HOURLY_ERROR_ANALYSIS.getKey(), computeQuery3(goodRecords));
+            }
+        }
 
         return results;
     }
@@ -190,6 +229,9 @@ public class CommonPipeline implements Pipeline {
     @Override
     public void shutdown() {
         allRecords.clear();
+        rawLines.clear();
+        dateStats.clear();
+        batchSummaries = new ArrayList<>();
     }
 
     @Override
@@ -198,7 +240,64 @@ public class CommonPipeline implements Pipeline {
         m.put("processed", processed);
         m.put("malformed", malformedCount);
         m.put("total_records", processed + malformedCount);
-        m.put("total_batches", batchCount);
+        m.put("total_batches", computeBatchCount());
+        m.put("raw_loaded", rawLoaded);
+        m.put("ingest_chunks", ingestChunks);
         return m;
+    }
+
+    @Override
+    public List<Map<String, Object>> getBatchSummaries() {
+        return batchSummaries;
+    }
+
+    private int computeBatchCount() {
+        int dateCount = dateStats.size();
+        if (dateCount == 0) {
+            return 0;
+        }
+        return (int) Math.ceil((double) dateCount / batchSizeDays);
+    }
+
+    private List<Map<String, Object>> buildBatchSummaries() {
+        List<String> dates = new ArrayList<>(dateStats.keySet());
+        Collections.sort(dates);
+        Map<Integer, Map<String, Object>> summaries = new LinkedHashMap<>();
+        for (int i = 0; i < dates.size(); i++) {
+            String date = dates.get(i);
+            int batchId = (i / batchSizeDays) + 1;
+            Map<String, Object> summary = summaries.computeIfAbsent(batchId, id -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("batch_id", id);
+                m.put("batch_start_date", date);
+                m.put("batch_end_date", date);
+                m.put("batch_size_days", batchSizeDays);
+                m.put("records_total", 0L);
+                m.put("malformed_records", 0L);
+                return m;
+            });
+            summary.put("batch_end_date", date);
+            long[] stats = dateStats.getOrDefault(date, new long[] {0L, 0L});
+            summary.put("records_total", (Long) summary.get("records_total") + stats[0]);
+            summary.put("malformed_records", (Long) summary.get("malformed_records") + stats[1]);
+        }
+        return new ArrayList<>(summaries.values());
+    }
+
+    private Map<String, List<LogRecord>> groupByMonth(List<LogRecord> records) {
+        Map<String, List<LogRecord>> byMonth = new LinkedHashMap<>();
+        for (LogRecord r : records) {
+            String logDate = r.getLogDate();
+            if (logDate == null || logDate.length() < 7) {
+                continue;
+            }
+            String month = logDate.substring(0, 7);
+            byMonth.computeIfAbsent(month, k -> new ArrayList<>()).add(r);
+        }
+        return byMonth;
+    }
+
+    private String scopedKey(QueryType type, String month) {
+        return type.getKey() + "|month=" + month;
     }
 }

@@ -1,6 +1,8 @@
 app:
   data_dir: data/raw
   batch_size: 1000
+  ingest_chunk_size: 10000
+  batch_size_days: 1
 
 mongodb:
   uri: mongodb://root:secret@localhost:27017/admin
@@ -10,3 +12,7 @@ jdbc:
   url: jdbc:postgresql://localhost:5433/etl_results
   user: etl
   password: secret
+
+pig:
+  image: multietl-pig:latest
+  script: app/pig/etl.pig
