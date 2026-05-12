@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 public class PigPipeline implements Pipeline {
     private final AppConfig config;
     private String runId;
-    private int batchSizeDays = 1;
+    private int batchSizeRecords = 1;
     private long rawLoaded = 0;
     private int ingestChunks = 0;
     private long processed = 0;
@@ -35,7 +35,6 @@ public class PigPipeline implements Pipeline {
     private Path runDir;
     private Path inputDir;
     private Path outputDir;
-    private final Map<String, long[]> dateStats = new HashMap<>();
     private List<Map<String, Object>> batchSummaries = new ArrayList<>();
 
     public PigPipeline() {
@@ -47,9 +46,9 @@ public class PigPipeline implements Pipeline {
     }
 
     @Override
-    public void startRun(String runId, int batchSizeDays) {
+    public void startRun(String runId, int batchSizeRecords) {
         this.runId = runId;
-        this.batchSizeDays = Math.max(1, batchSizeDays);
+        this.batchSizeRecords = Math.max(1, batchSizeRecords);
         this.runDir = Path.of("results", "pig", "run_" + runId);
         this.inputDir = runDir.resolve("input");
         this.outputDir = runDir.resolve("output");
@@ -69,6 +68,15 @@ public class PigPipeline implements Pipeline {
         Path chunkFile = inputDir.resolve(String.format("chunk_%05d.log", chunkId));
         Files.write(chunkFile, rawLines, StandardCharsets.ISO_8859_1,
             StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("batch_id", chunkId);
+        summary.put("batch_start_date", null);
+        summary.put("batch_end_date", null);
+        summary.put("batch_size_records", batchSizeRecords);
+        summary.put("records_total", (long) rawLines.size());
+        summary.put("malformed_records", 0L);
+        batchSummaries.add(summary);
     }
 
     @Override
@@ -79,12 +87,9 @@ public class PigPipeline implements Pipeline {
 
         Map<String, List<Map<String, Object>>> results = new LinkedHashMap<>();
         List<Map<String, Object>> q1Rows = readQueryRows("q1", 4);
-        List<Map<String, Object>> q2Rows = readQueryRows("q2", 5);
+        List<Map<String, Object>> q2Rows = readQueryRows("q2", 4);
         List<Map<String, Object>> q3Rows = readQueryRows("q3", 6);
-        loadDateCounts();
         loadMalformedSummary();
-
-        batchSummaries = buildBatchSummaries();
 
         if (plan.isSplitByMonth()) {
             if (plan.getQueries().contains(QueryType.DAILY_TRAFFIC_SUMMARY)) {
@@ -113,7 +118,6 @@ public class PigPipeline implements Pipeline {
 
     @Override
     public void shutdown() {
-        dateStats.clear();
         batchSummaries = new ArrayList<>();
     }
 
@@ -182,9 +186,6 @@ public class PigPipeline implements Pipeline {
         cmd.add("INPUT=/workspace/" + inputGlob);
         cmd.add("-param");
         cmd.add("OUTPUT=/workspace/" + outputPath);
-        cmd.add("-param");
-        cmd.add("BATCH_SIZE_DAYS=" + batchSizeDays);
-
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.inheritIO();
         Process proc = pb.start();
@@ -232,11 +233,18 @@ public class PigPipeline implements Pipeline {
                 row.put("total_bytes", Double.parseDouble(parts[3]));
                 break;
             case "q2":
-                row.put("log_month", parts[0]);
-                row.put("resource_path", parts[1]);
-                row.put("request_count", Long.parseLong(parts[2]));
-                row.put("total_bytes", Double.parseDouble(parts[3]));
-                row.put("distinct_host_count", Long.parseLong(parts[4]));
+                if (parts.length >= 5) {
+                    row.put("log_month", parts[0]);
+                    row.put("resource_path", parts[1]);
+                    row.put("request_count", Long.parseLong(parts[2]));
+                    row.put("total_bytes", Double.parseDouble(parts[3]));
+                    row.put("distinct_host_count", Long.parseLong(parts[4]));
+                } else {
+                    row.put("resource_path", parts[0]);
+                    row.put("request_count", Long.parseLong(parts[1]));
+                    row.put("total_bytes", Double.parseDouble(parts[2]));
+                    row.put("distinct_host_count", Long.parseLong(parts[3]));
+                }
                 break;
             case "q3":
                 row.put("log_date", parts[0]);
@@ -250,34 +258,6 @@ public class PigPipeline implements Pipeline {
                 break;
         }
         return row;
-    }
-
-    private void loadDateCounts() throws Exception {
-        Path dir = outputDir.resolve("date_counts");
-        if (!dir.toFile().exists()) {
-            return;
-        }
-        List<Path> partFiles = Files.list(dir)
-            .filter(p -> p.getFileName().toString().startsWith("part-"))
-            .collect(Collectors.toList());
-        for (Path file : partFiles) {
-            try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (line.isBlank()) {
-                        continue;
-                    }
-                    String[] parts = line.split("\t", -1);
-                    if (parts.length < 3) {
-                        continue;
-                    }
-                    String logDate = parts[0];
-                    long total = Long.parseLong(parts[1]);
-                    long malformedCount = Long.parseLong(parts[2]);
-                    dateStats.put(logDate, new long[] {total, malformedCount});
-                }
-            }
-        }
     }
 
     private void loadMalformedSummary() throws Exception {
@@ -307,31 +287,6 @@ public class PigPipeline implements Pipeline {
                 }
             }
         }
-    }
-
-    private List<Map<String, Object>> buildBatchSummaries() {
-        List<String> dates = new ArrayList<>(dateStats.keySet());
-        Collections.sort(dates);
-        Map<Integer, Map<String, Object>> summaries = new LinkedHashMap<>();
-        for (int i = 0; i < dates.size(); i++) {
-            String date = dates.get(i);
-            int batchId = (i / batchSizeDays) + 1;
-            Map<String, Object> summary = summaries.computeIfAbsent(batchId, id -> {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("batch_id", id);
-                m.put("batch_start_date", date);
-                m.put("batch_end_date", date);
-                m.put("batch_size_days", batchSizeDays);
-                m.put("records_total", 0L);
-                m.put("malformed_records", 0L);
-                return m;
-            });
-            summary.put("batch_end_date", date);
-            long[] stats = dateStats.getOrDefault(date, new long[] {0L, 0L});
-            summary.put("records_total", (Long) summary.get("records_total") + stats[0]);
-            summary.put("malformed_records", (Long) summary.get("malformed_records") + stats[1]);
-        }
-        return new ArrayList<>(summaries.values());
     }
 
     private void addScopedByMonth(Map<String, List<Map<String, Object>>> results,

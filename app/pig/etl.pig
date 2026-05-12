@@ -40,14 +40,10 @@ q1_group = GROUP parsed_good BY (log_date, status_code);
 q1 = FOREACH q1_group GENERATE group.log_date AS log_date, group.status_code AS status_code, COUNT(parsed_good) AS request_count, SUM(parsed_good.bytes_val) AS total_bytes;
 STORE q1 INTO '$OUTPUT/q1' USING PigStorage('\t');
 
-q2_group = GROUP parsed_good BY (log_month, resource_path);
-q2_counts = FOREACH q2_group GENERATE group.log_month AS log_month, group.resource_path AS resource_path, COUNT(parsed_good) AS request_count, SUM(parsed_good.bytes_val) AS total_bytes, COUNT(DISTINCT parsed_good.host) AS distinct_host_count;
-q2_by_month = GROUP q2_counts BY log_month;
-q2_top = FOREACH q2_by_month {
-  ordered = ORDER q2_counts BY request_count DESC;
-  limited = LIMIT ordered 20;
-  GENERATE FLATTEN(limited);
-};
+q2_group = GROUP parsed_good BY resource_path;
+q2_counts = FOREACH q2_group GENERATE group AS resource_path, COUNT(parsed_good) AS request_count, SUM(parsed_good.bytes_val) AS total_bytes, COUNT(DISTINCT parsed_good.host) AS distinct_host_count;
+q2_ordered = ORDER q2_counts BY request_count DESC;
+q2_top = LIMIT q2_ordered 20;
 STORE q2_top INTO '$OUTPUT/q2' USING PigStorage('\t');
 
 errors = FOREACH parsed_good GENERATE log_date, log_hour, host, (status_code >= 400 AND status_code <= 599 ? 1 : 0) AS is_error;

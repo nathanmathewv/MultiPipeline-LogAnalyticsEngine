@@ -34,7 +34,7 @@ public class EtlJobTracker {
         public String jobId;
         public String pipeline;
         public String inputFile;
-        public int batchSizeDays;
+        public int batchSizeRecords;
         public String status; // RUNNING, COMPLETED, FAILED
         public long startTime;
         public long endTime;
@@ -43,11 +43,11 @@ public class EtlJobTracker {
         public String errorMessage;
         public Map<String, Object> results;
 
-        public EtlJob(String jobId, String pipeline, String inputFile, int batchSizeDays) {
+        public EtlJob(String jobId, String pipeline, String inputFile, int batchSizeRecords) {
             this.jobId = jobId;
             this.pipeline = pipeline;
             this.inputFile = inputFile;
-            this.batchSizeDays = batchSizeDays;
+            this.batchSizeRecords = batchSizeRecords;
             this.status = "RUNNING";
             this.startTime = System.currentTimeMillis();
         }
@@ -71,7 +71,7 @@ public class EtlJobTracker {
             map.put("jobId", jobId);
             map.put("pipeline", pipeline);
             map.put("inputFile", inputFile);
-            map.put("batchSizeDays", batchSizeDays);
+            map.put("batchSizeRecords", batchSizeRecords);
             map.put("status", status);
             map.put("startTime", startTime);
             if (endTime > 0) {

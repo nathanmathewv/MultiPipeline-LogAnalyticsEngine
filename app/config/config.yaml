@@ -3,6 +3,8 @@ app:
   batch_size: 1000
   ingest_chunk_size: 10000
   batch_size_days: 1
+  batch_mode: records
+
 
 mongodb:
   uri: mongodb://root:secret@localhost:27017/admin
@@ -16,3 +18,9 @@ jdbc:
 pig:
   image: multietl-pig:latest
   script: app/pig/etl.pig
+
+mapreduce:
+  image: multietl-mapreduce:latest
+  work_dir: results/mapreduce
+  dockerfile: app/mapreduce/Dockerfile
+  script: /usr/local/bin/run-mapreduce.sh

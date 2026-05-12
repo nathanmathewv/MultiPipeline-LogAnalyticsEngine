@@ -30,16 +30,16 @@ public class Controller {
     public Map<String, Object> run(String pipelineName,
                                   List<Path> inputFiles,
                                   int ingestChunkSize,
-                                  int batchSizeDays,
+                                  int batchSize,
                                   QueryPlan queryPlan,
                                   java.util.function.Consumer<Map<String, Object>> metricsCallback) throws Exception {
         String runId = UUID.randomUUID().toString();
         Pipeline pipeline = PipelineFactory.create(pipelineName, config);
-        pipeline.startRun(runId, batchSizeDays);
+        pipeline.startRun(runId, batchSize);
 
         Instant start = Instant.now();
         int[] chunkIdRef = {1};
-        BatchManager.processFilesInChunks(inputFiles, ingestChunkSize, chunk -> {
+        BatchManager.BatchProcessor processor = chunk -> {
             int chunkId = chunkIdRef[0]++;
             logger.info("Starting ingest chunk {} (size={})", chunkId, chunk.size());
             pipeline.processBatch(chunk, chunkId);
@@ -47,7 +47,15 @@ public class Controller {
             if (metricsCallback != null) {
                 metricsCallback.accept(pipeline.getMetrics());
             }
-        });
+        };
+
+        if ("week".equalsIgnoreCase(config.getBatchMode()) || "weekly".equalsIgnoreCase(config.getBatchMode())) {
+            logger.info("Using weekly record batching");
+            BatchManager.processFilesByWeek(inputFiles, processor);
+        } else {
+            logger.info("Using fixed-size record batching with chunk size {}", ingestChunkSize);
+            BatchManager.processFilesInChunks(inputFiles, ingestChunkSize, processor);
+        }
 
         Map<String, List<Map<String, Object>>> results = pipeline.finalizeRun(queryPlan);
         Instant end = Instant.now();
@@ -60,8 +68,8 @@ public class Controller {
         double avgBatchSize = totalBatches == 0 ? 0.0 : ((double) totalRecords) / totalBatches;
 
         // persist metadata and results
-        dbLoader.insertRunMetadata(runId, pipelineName, batchSizeDays, avgBatchSize, totalRecords, malformed, totalBatches, runtimeMs);
-        dbLoader.insertBatchMetadata(runId, pipelineName, batchSizeDays, pipeline.getBatchSummaries());
+        dbLoader.insertRunMetadata(runId, pipelineName, batchSize, avgBatchSize, totalRecords, malformed, totalBatches, runtimeMs);
+        dbLoader.insertBatchMetadata(runId, pipelineName, batchSize, pipeline.getBatchSummaries());
         dbLoader.insertMalformedSummary(runId, pipelineName, totalRecords, malformed);
         dbLoader.insertEtlResults(runId, pipelineName, results);
 

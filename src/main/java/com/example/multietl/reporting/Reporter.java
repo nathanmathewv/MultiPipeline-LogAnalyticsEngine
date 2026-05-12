@@ -43,7 +43,7 @@ public class Reporter {
                 appendLine(sb, "Run ID:           " + rs.getString("run_id"));
                 appendLine(sb, "Pipeline:         " + rs.getString("pipeline_name"));
                 appendLine(sb, "Batch ID:         all");
-                appendLine(sb, "Batch size (days): " + rs.getInt("batch_size"));
+                appendLine(sb, "Batch size:       " + rs.getInt("batch_size"));
                 appendLine(sb, "Avg batch size:   " + String.format("%.2f", rs.getDouble("avg_batch_size")));
                 appendLine(sb, "Total records:    " + rs.getLong("total_records"));
                 appendLine(sb, "Malformed records: " + rs.getLong("malformed_records"));
@@ -66,13 +66,13 @@ public class Reporter {
             boolean any = false;
             while (rs.next()) {
                 any = true;
-                appendLine(sb, String.format("Batch %s: %s to %s | Records: %s | Malformed: %s | Days: %s",
+                appendLine(sb, String.format("Batch %s: %s to %s | Records: %s | Malformed: %s | Batch size: %s",
                     rs.getObject("batch_id"),
                     rs.getString("batch_start_date"),
                     rs.getString("batch_end_date"),
                     rs.getObject("records_total"),
                     rs.getObject("malformed_records"),
-                    rs.getObject("batch_size_days")));
+                    rs.getObject("batch_size_records")));
             }
             if (!any) {
                 appendLine(sb, "No batch metadata found.");
@@ -101,25 +101,30 @@ public class Reporter {
         appendLine(sb, "===========================================\n");
 
         try (ResultSet r2 = dbLoader.queryEtlResults(runId)) {
-            Map<String, Map<String, List<String>>> resultsByScope = new LinkedHashMap<>();
+            Map<String, Map<String, List<ReportRow>>> resultsByScope = new LinkedHashMap<>();
             while (r2.next()) {
                 String scope = r2.getString("scope");
                 String scopeKey = scope == null ? "all" : scope;
                 String queryName = r2.getString("query_name");
-                String row = formatRow(queryName, r2);
+                ReportRow row = new ReportRow(
+                    formatRow(queryName, r2),
+                    r2.getString("k1"),
+                    r2.getString("k2"),
+                    r2.getDouble("m1"));
                 resultsByScope
                     .computeIfAbsent(scopeKey, k -> new LinkedHashMap<>())
                     .computeIfAbsent(queryName, k -> new ArrayList<>())
                     .add(row);
             }
 
-            for (Map.Entry<String, Map<String, List<String>>> scopeEntry : resultsByScope.entrySet()) {
+            for (Map.Entry<String, Map<String, List<ReportRow>>> scopeEntry : resultsByScope.entrySet()) {
                 appendLine(sb, "Scope: " + scopeEntry.getKey());
                 appendLine(sb, "-------------------------------------------");
-                for (Map.Entry<String, List<String>> queryEntry : scopeEntry.getValue().entrySet()) {
+                for (Map.Entry<String, List<ReportRow>> queryEntry : scopeEntry.getValue().entrySet()) {
+                    sortRows(queryEntry.getKey(), queryEntry.getValue());
                     appendLine(sb, "Query: " + queryEntry.getKey());
-                    for (String row : queryEntry.getValue()) {
-                        appendLine(sb, row);
+                    for (ReportRow row : queryEntry.getValue()) {
+                        appendLine(sb, row.text());
                     }
                     appendLine(sb, "");
                 }
@@ -144,6 +149,39 @@ public class Reporter {
         }
         return String.format("  k1=%s k2=%s m1=%s m2=%s m3=%s m4=%s",
                 rs.getObject("k1"), rs.getObject("k2"), rs.getObject("m1"), rs.getObject("m2"), rs.getObject("m3"), rs.getObject("m4"));
+    }
+
+    private void sortRows(String queryName, List<ReportRow> rows) {
+        if (queryName.contains("top_resources")) {
+            rows.sort(Comparator
+                .comparingDouble(ReportRow::metricOne).reversed()
+                .thenComparing(row -> valueOrEmpty(row.k1())));
+            return;
+        }
+
+        if (queryName.contains("daily_traffic") || queryName.contains("hourly_error")) {
+            rows.sort(Comparator
+                .comparing((ReportRow row) -> valueOrEmpty(row.k1()))
+                .thenComparingInt(row -> numericSortKey(row.k2())));
+        }
+    }
+
+    private String valueOrEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private int numericSortKey(String value) {
+        if (value == null || value.isBlank()) {
+            return Integer.MAX_VALUE;
+        }
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ignored) {
+            return Integer.MAX_VALUE;
+        }
+    }
+
+    private record ReportRow(String text, String k1, String k2, double metricOne) {
     }
 
     private void appendLine(StringBuilder sb, String line) {

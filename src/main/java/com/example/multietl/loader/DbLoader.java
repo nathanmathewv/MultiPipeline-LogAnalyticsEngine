@@ -73,11 +73,11 @@ public class DbLoader {
         }
     }
 
-    public void insertBatchMetadata(String runId, String pipelineName, int batchSizeDays, List<Map<String, Object>> summaries) throws SQLException {
+    public void insertBatchMetadata(String runId, String pipelineName, int batchSizeRecords, List<Map<String, Object>> summaries) throws SQLException {
         if (summaries == null || summaries.isEmpty()) {
             return;
         }
-        String sql = "INSERT INTO batch_metadata(run_id,pipeline_name,batch_id,batch_start_date,batch_end_date,batch_size_days,records_total,malformed_records,created_at) VALUES(?,?,?,?,?,?,?,?,now())";
+        String sql = "INSERT INTO batch_metadata(run_id,pipeline_name,batch_id,batch_start_date,batch_end_date,batch_size_records,records_total,malformed_records,created_at) VALUES(?,?,?,?,?,?,?,?,now())";
         try (Connection c = getConn(); PreparedStatement ps = c.prepareStatement(sql)) {
             for (Map<String, Object> summary : summaries) {
                 ps.setString(1, runId);
@@ -85,7 +85,7 @@ public class DbLoader {
                 ps.setObject(3, summary.getOrDefault("batch_id", 0));
                 ps.setObject(4, summary.getOrDefault("batch_start_date", null));
                 ps.setObject(5, summary.getOrDefault("batch_end_date", null));
-                ps.setInt(6, batchSizeDays);
+                ps.setInt(6, batchSizeRecords);
                 ps.setObject(7, summary.getOrDefault("records_total", null));
                 ps.setObject(8, summary.getOrDefault("malformed_records", null));
                 ps.addBatch();

@@ -26,7 +26,7 @@ public class MongoPipeline implements Pipeline {
     private MongoCollection<Document> rawColl;
     private MongoCollection<Document> parsedColl;
     private String runId;
-    private int batchSizeDays = 1;
+    private int batchSizeRecords = 1;
 
     private final LogParser parser = new LogParser();
     private long malformedCount = 0;
@@ -42,9 +42,9 @@ public class MongoPipeline implements Pipeline {
     }
 
     @Override
-    public void startRun(String runId, int batchSizeDays) {
+    public void startRun(String runId, int batchSizeRecords) {
         this.runId = runId;
-        this.batchSizeDays = Math.max(1, batchSizeDays);
+        this.batchSizeRecords = Math.max(1, batchSizeRecords);
         client = MongoClients.create(uri);
         db = client.getDatabase(dbName);
         rawColl = db.getCollection("raw_logs");
@@ -53,13 +53,16 @@ public class MongoPipeline implements Pipeline {
         parsedColl.createIndex(new Document("log_date", 1));
         parsedColl.createIndex(new Document("resource_path", 1));
         parsedColl.createIndex(new Document("status_code", 1));
-        logger.info("MongoPipeline started run {} with batchSizeDays={}", runId, this.batchSizeDays);
+        logger.info("MongoPipeline started run {} with batchSizeRecords={}", runId, this.batchSizeRecords);
     }
 
     @Override
     public void processBatch(List<String> rawLines, int chunkId) {
         ingestChunks++;
         rawLoaded += rawLines.size();
+        long batchMalformed = 0L;
+        String firstDate = null;
+        String lastDate = null;
 
         List<Document> rawDocs = new ArrayList<>(rawLines.size());
         for (String line : rawLines) {
@@ -88,12 +91,13 @@ public class MongoPipeline implements Pipeline {
             d.append("malformed", record.isMalformed());
             d.append("raw_line", record.getRawLine());
             d.append("run_id", runId);
-            d.append("batch_id", 0);
+            d.append("batch_id", chunkId);
             d.append("ingest_chunk_id", chunkId);
             parsedDocs.add(d);
 
             if (!r.success) {
                 malformedCount++;
+                batchMalformed++;
             } else {
                 processed++;
             }
@@ -105,19 +109,28 @@ public class MongoPipeline implements Pipeline {
                 if (!r.success) {
                     stats[1]++;
                 }
+                if (firstDate == null || logDate.compareTo(firstDate) < 0) firstDate = logDate;
+                if (lastDate == null || logDate.compareTo(lastDate) > 0) lastDate = logDate;
             }
         }
         if (!parsedDocs.isEmpty()) {
             parsedColl.insertMany(parsedDocs);
         }
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("batch_id", chunkId);
+        summary.put("batch_start_date", firstDate);
+        summary.put("batch_end_date", lastDate);
+        summary.put("batch_size_records", batchSizeRecords);
+        summary.put("records_total", (long) rawLines.size());
+        summary.put("malformed_records", batchMalformed);
+        batchSummaries.add(summary);
+
         logger.info("Processed ingest chunk {}: inserted {} parsed docs (malformed so far={})", chunkId, parsedDocs.size(), malformedCount);
     }
 
     @Override
     public Map<String, List<Map<String, Object>>> finalizeRun(QueryPlan plan) {
-        assignBatchIdsByDate();
-        batchSummaries = buildBatchSummaries();
-
         Map<String, List<Map<String, Object>>> results = new LinkedHashMap<>();
 
         if (plan.isSplitByMonth()) {
@@ -162,7 +175,7 @@ public class MongoPipeline implements Pipeline {
         m.put("processed", processed);
         m.put("malformed", malformedCount);
         m.put("total_records", processed + malformedCount);
-        m.put("total_batches", computeBatchCount());
+        m.put("total_batches", ingestChunks);
         m.put("raw_loaded", rawLoaded);
         m.put("ingest_chunks", ingestChunks);
         return m;
@@ -171,50 +184,6 @@ public class MongoPipeline implements Pipeline {
     @Override
     public List<Map<String, Object>> getBatchSummaries() {
         return batchSummaries;
-    }
-
-    private int computeBatchCount() {
-        int dateCount = dateStats.size();
-        if (dateCount == 0) {
-            return 0;
-        }
-        return (int) Math.ceil((double) dateCount / batchSizeDays);
-    }
-
-    private void assignBatchIdsByDate() {
-        List<String> dates = new ArrayList<>(dateStats.keySet());
-        Collections.sort(dates);
-        for (int i = 0; i < dates.size(); i++) {
-            String date = dates.get(i);
-            int batchId = (i / batchSizeDays) + 1;
-            parsedColl.updateMany(new Document("run_id", runId).append("log_date", date),
-                new Document("$set", new Document("batch_id", batchId)));
-        }
-    }
-
-    private List<Map<String, Object>> buildBatchSummaries() {
-        List<String> dates = new ArrayList<>(dateStats.keySet());
-        Collections.sort(dates);
-        Map<Integer, Map<String, Object>> summaries = new LinkedHashMap<>();
-        for (int i = 0; i < dates.size(); i++) {
-            String date = dates.get(i);
-            int batchId = (i / batchSizeDays) + 1;
-            Map<String, Object> summary = summaries.computeIfAbsent(batchId, id -> {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("batch_id", id);
-                m.put("batch_start_date", date);
-                m.put("batch_end_date", date);
-                m.put("batch_size_days", batchSizeDays);
-                m.put("records_total", 0L);
-                m.put("malformed_records", 0L);
-                return m;
-            });
-            summary.put("batch_end_date", date);
-            long[] stats = dateStats.getOrDefault(date, new long[] {0L, 0L});
-            summary.put("records_total", (Long) summary.get("records_total") + stats[0]);
-            summary.put("malformed_records", (Long) summary.get("malformed_records") + stats[1]);
-        }
-        return new ArrayList<>(summaries.values());
     }
 
     private List<String> extractMonths() {

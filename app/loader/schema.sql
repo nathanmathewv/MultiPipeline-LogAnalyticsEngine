@@ -35,11 +35,14 @@ CREATE TABLE IF NOT EXISTS batch_metadata (
   batch_id INTEGER NOT NULL,
   batch_start_date TEXT,
   batch_end_date TEXT,
-  batch_size_days INTEGER,
+  batch_size_records INTEGER,
   records_total BIGINT,
   malformed_records BIGINT,
   created_at TIMESTAMP DEFAULT now()
 );
+
+ALTER TABLE batch_metadata
+  ADD COLUMN IF NOT EXISTS batch_size_records INTEGER;
 
 CREATE TABLE IF NOT EXISTS malformed_summary (
   id SERIAL PRIMARY KEY,

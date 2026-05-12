@@ -18,7 +18,7 @@ public class PipelineFactory {
             case "pig":
                 return new PigPipeline(config);
             case "mapreduce":
-                return new MapReducePipeline();
+                return new MapReducePipeline(config);
             case "hive":
                 return new HivePipeline();
             default:

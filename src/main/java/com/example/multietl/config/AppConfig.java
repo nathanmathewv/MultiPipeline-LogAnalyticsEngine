@@ -37,6 +37,11 @@ public class AppConfig {
         return ((Number) app.getOrDefault("batch_size_days", 1)).intValue();
     }
 
+    public String getBatchMode() {
+        Map<String, Object> app = getSection("app");
+        return (String) app.getOrDefault("batch_mode", "records");
+    }
+
     public String getDataDir() {
         Map<String, Object> app = getSection("app");
         return (String) app.getOrDefault("data_dir", "data/raw");
@@ -75,5 +80,25 @@ public class AppConfig {
     public String getPigScriptPath() {
         Map<String, Object> pig = getSection("pig");
         return (String) pig.getOrDefault("script", "app/pig/etl.pig");
+    }
+
+    public String getMapReduceImage() {
+        Map<String, Object> mapreduce = getSection("mapreduce");
+        return (String) mapreduce.getOrDefault("image", "multietl-mapreduce:latest");
+    }
+
+    public String getMapReduceWorkDir() {
+        Map<String, Object> mapreduce = getSection("mapreduce");
+        return (String) mapreduce.getOrDefault("work_dir", "results/mapreduce");
+    }
+
+    public String getMapReduceDockerfile() {
+        Map<String, Object> mapreduce = getSection("mapreduce");
+        return (String) mapreduce.getOrDefault("dockerfile", "app/mapreduce/Dockerfile");
+    }
+
+    public String getMapReduceScriptPath() {
+        Map<String, Object> mapreduce = getSection("mapreduce");
+        return (String) mapreduce.getOrDefault("script", "/usr/local/bin/run-mapreduce.sh");
     }
 }

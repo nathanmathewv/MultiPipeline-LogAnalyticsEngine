@@ -28,10 +28,12 @@ public class EtlController {
     public ResponseEntity<?> startJob(
             @RequestParam String pipeline,
             @RequestParam String file,
+            @RequestParam(required = false) Integer batchSize,
             @RequestParam(required = false) Integer batchDays) {
         try {
-            logger.info("Received ETL job request: pipeline={}, file={}, batchDays={}", pipeline, file, batchDays);
-            String jobId = etlService.submitJob(pipeline, file, batchDays);
+            Integer requestedBatchSize = batchSize != null ? batchSize : batchDays;
+            logger.info("Received ETL job request: pipeline={}, file={}, batchSize={}", pipeline, file, requestedBatchSize);
+            String jobId = etlService.submitJob(pipeline, file, requestedBatchSize);
             return ResponseEntity.ok(Map.of(
                     "jobId", jobId,
                     "message", "ETL job submitted successfully",
@@ -62,8 +64,7 @@ public class EtlController {
                 return ResponseEntity.ok(Map.of("files", new String[0]));
             }
 
-            File[] files = dataDir.listFiles((d, name) -> 
-                    name.endsWith(".log") || name.endsWith(".gz"));
+            File[] files = dataDir.listFiles((d, name) -> isDatasetFile(name));
             
             List<Map<String, Object>> fileList = new ArrayList<>();
             if (files != null) {
@@ -92,7 +93,7 @@ public class EtlController {
                 return ResponseEntity.ok(Map.of("stats", new Object[0]));
             }
 
-            File[] files = dataDir.listFiles((d, name) -> name.endsWith(".log"));
+            File[] files = dataDir.listFiles((d, name) -> isDatasetFile(name));
             List<Map<String, Object>> stats = new ArrayList<>();
 
             if (files != null) {
@@ -117,13 +118,23 @@ public class EtlController {
 
     private long countLines(File file) throws Exception {
         long count = 0;
-        try (java.util.Scanner scanner = new java.util.Scanner(file)) {
+        java.io.InputStream in = new java.io.FileInputStream(file);
+        if (file.getName().toLowerCase(Locale.ROOT).endsWith(".gz")) {
+            in = new java.util.zip.GZIPInputStream(in);
+        }
+        try (java.util.Scanner scanner = new java.util.Scanner(in, java.nio.charset.StandardCharsets.ISO_8859_1)) {
             while (scanner.hasNextLine()) {
                 scanner.nextLine();
                 count++;
             }
         }
         return count;
+    }
+
+    private boolean isDatasetFile(String name) {
+        return name.endsWith(".log")
+            || name.endsWith(".gz")
+            || name.startsWith("NASA_access_log_");
     }
 
     private String formatBytes(long bytes) {

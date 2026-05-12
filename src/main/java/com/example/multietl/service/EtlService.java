@@ -27,21 +27,21 @@ public class EtlService {
         this.jobTracker = EtlJobTracker.getInstance();
     }
 
-    public String submitJob(String pipeline, String inputFile, Integer batchSizeDays) throws Exception {
+    public String submitJob(String pipeline, String inputFile, Integer batchSizeRecords) throws Exception {
         String jobId = UUID.randomUUID().toString();
-        int actualBatchSizeDays = batchSizeDays != null ? batchSizeDays : config.getBatchSizeDays();
-        int ingestChunkSize = config.getIngestChunkSize();
+        int actualBatchSizeRecords = batchSizeRecords != null ? batchSizeRecords : config.getBatchSize();
+        int ingestChunkSize = actualBatchSizeRecords;
         
         List<Path> inputPaths = resolveInputFiles(inputFile, config.getDataDir());
         if (inputPaths.isEmpty()) {
             throw new IllegalArgumentException("Input file(s) not found for: " + inputFile);
         }
 
-        EtlJob job = new EtlJob(jobId, pipeline, inputFile, actualBatchSizeDays);
+        EtlJob job = new EtlJob(jobId, pipeline, inputFile, actualBatchSizeRecords);
         jobTracker.addJob(jobId, job);
 
-        QueryPlan queryPlan = QueryPlan.all(true);
-        executorService.submit(() -> runJob(jobId, pipeline, inputPaths, ingestChunkSize, actualBatchSizeDays, queryPlan));
+        QueryPlan queryPlan = QueryPlan.all(false);
+        executorService.submit(() -> runJob(jobId, pipeline, inputPaths, ingestChunkSize, actualBatchSizeRecords, queryPlan));
         
         return jobId;
     }
@@ -50,14 +50,15 @@ public class EtlService {
                         String pipeline,
                         List<Path> inputPaths,
                         int ingestChunkSize,
-                        int batchSizeDays,
+                        int batchSizeRecords,
                         QueryPlan queryPlan) {
         try {
-            logger.info("Starting job {}: pipeline={}, input={}, batchSizeDays={}", jobId, pipeline, inputPaths, batchSizeDays);
+            logger.info("Starting job {}: pipeline={}, input={}, batchSizeRecords={}, batchMode={}",
+                jobId, pipeline, inputPaths, batchSizeRecords, config.getBatchMode());
             
             var controller = new Controller(dbLoader, config);
             EtlJob job = jobTracker.getJob(jobId);
-            Map<String, Object> finalMetrics = controller.run(pipeline, inputPaths, ingestChunkSize, batchSizeDays, queryPlan, metrics -> {
+            Map<String, Object> finalMetrics = controller.run(pipeline, inputPaths, ingestChunkSize, batchSizeRecords, queryPlan, metrics -> {
                 if (job != null) {
                     job.totalRecords = ((Number) metrics.getOrDefault("processed", 0L)).longValue() + ((Number) metrics.getOrDefault("malformed", 0L)).longValue();
                     job.malformedRecords = ((Number) metrics.getOrDefault("malformed", 0L)).longValue();
@@ -94,10 +95,8 @@ public class EtlService {
     private List<Path> resolveInputFiles(String inputFile, String dataDir) {
         if (inputFile == null || inputFile.isBlank() || inputFile.equalsIgnoreCase("all")) {
             List<Path> files = new java.util.ArrayList<>();
-            Path july = Path.of(dataDir, "NASA_access_log_Jul95");
-            Path aug = Path.of(dataDir, "NASA_access_log_Aug95");
-            if (july.toFile().exists()) files.add(july);
-            if (aug.toFile().exists()) files.add(aug);
+            addFirstExisting(files, dataDir, "NASA_access_log_Jul95", "NASA_access_log_Jul95.log", "NASA_access_log_Jul95.gz");
+            addFirstExisting(files, dataDir, "NASA_access_log_Aug95", "NASA_access_log_Aug95.log", "NASA_access_log_Aug95.gz");
             return files;
         }
 
@@ -106,5 +105,15 @@ public class EtlService {
             return List.of(inputPath);
         }
         return List.of();
+    }
+
+    private void addFirstExisting(List<Path> files, String dataDir, String... candidates) {
+        for (String candidate : candidates) {
+            Path path = Path.of(dataDir, candidate);
+            if (path.toFile().exists()) {
+                files.add(path);
+                return;
+            }
+        }
     }
 }
