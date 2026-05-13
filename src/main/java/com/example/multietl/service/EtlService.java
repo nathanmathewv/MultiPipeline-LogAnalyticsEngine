@@ -1,18 +1,20 @@
 package com.example.multietl.service;
 
-import com.example.multietl.config.AppConfig;
-import com.example.multietl.loader.DbLoader;
-import com.example.multietl.orchestrator.Controller;
-import com.example.multietl.pipelines.base.QueryPlan;
-import com.example.multietl.service.EtlJobTracker.EtlJob;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.example.multietl.config.AppConfig;
+import com.example.multietl.loader.DbLoader;
+import com.example.multietl.orchestrator.Controller;
+import com.example.multietl.pipelines.base.QueryPlan;
+import com.example.multietl.service.EtlJobTracker.EtlJob;
 
 public class EtlService {
     private static final Logger logger = LoggerFactory.getLogger(EtlService.class);
@@ -27,21 +29,46 @@ public class EtlService {
         this.jobTracker = EtlJobTracker.getInstance();
     }
 
-    public String submitJob(String pipeline, String inputFile, Integer batchSizeRecords) throws Exception {
+    public String submitJob(
+        String pipeline,
+        String inputFile,
+        String batchMode,
+        Integer batchSizeRecords,
+        Integer batchDays
+        ) throws Exception {
         String jobId = UUID.randomUUID().toString();
-        int actualBatchSizeRecords = batchSizeRecords != null ? batchSizeRecords : config.getBatchSize();
-        int ingestChunkSize = actualBatchSizeRecords;
+        int actualBatchSizeRecords =
+        batchSizeRecords != null
+                ? batchSizeRecords
+                : config.getBatchSize();
+
+        int actualBatchDays =
+                batchDays != null
+                        ? batchDays
+                : config.getBatchDays();
+
+        int ingestChunkSize =
+                "records".equalsIgnoreCase(batchMode)
+                    ? actualBatchSizeRecords
+                    : config.getIngestChunkSize();
         
         List<Path> inputPaths = resolveInputFiles(inputFile, config.getDataDir());
         if (inputPaths.isEmpty()) {
             throw new IllegalArgumentException("Input file(s) not found for: " + inputFile);
         }
 
-        EtlJob job = new EtlJob(jobId, pipeline, inputFile, actualBatchSizeRecords);
+        EtlJob job = new EtlJob(
+            jobId,
+            pipeline,
+            inputFile,
+            batchMode,
+            actualBatchSizeRecords,
+            actualBatchDays
+        );
         jobTracker.addJob(jobId, job);
 
         QueryPlan queryPlan = QueryPlan.all(false);
-        executorService.submit(() -> runJob(jobId, pipeline, inputPaths, ingestChunkSize, actualBatchSizeRecords, queryPlan));
+        executorService.submit(() -> runJob(jobId, pipeline, inputPaths, batchMode, ingestChunkSize, actualBatchSizeRecords, actualBatchDays, queryPlan));
         
         return jobId;
     }
@@ -49,12 +76,24 @@ public class EtlService {
     private void runJob(String jobId,
                         String pipeline,
                         List<Path> inputPaths,
+                        String batchMode,
                         int ingestChunkSize,
                         int batchSizeRecords,
+                        int batchDays,
                         QueryPlan queryPlan) {
         try {
-            logger.info("Starting job {}: pipeline={}, input={}, batchSizeRecords={}, batchMode={}",
-                jobId, pipeline, inputPaths, batchSizeRecords, config.getBatchMode());
+            logger.info(
+                "Starting job {}: pipeline={}, input={}, batchMode={}, batchSizeRecords={}, batchDays={}",
+                jobId,
+                pipeline,
+                inputPaths,
+                batchMode,
+                batchSizeRecords,
+                batchDays
+            );
+            
+            config.setBatchMode(batchMode);
+            config.setBatchDays(batchDays);
             
             var controller = new Controller(dbLoader, config);
             EtlJob job = jobTracker.getJob(jobId);

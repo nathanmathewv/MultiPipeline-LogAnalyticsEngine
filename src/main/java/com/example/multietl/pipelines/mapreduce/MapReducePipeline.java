@@ -1,13 +1,5 @@
 package com.example.multietl.pipelines.mapreduce;
 
-import com.example.multietl.config.AppConfig;
-import com.example.multietl.pipelines.base.Pipeline;
-import com.example.multietl.pipelines.base.QueryPlan;
-import com.example.multietl.pipelines.base.QueryType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.BufferedReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,6 +10,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.example.multietl.config.AppConfig;
+import com.example.multietl.pipelines.base.Pipeline;
+import com.example.multietl.pipelines.base.QueryPlan;
+import com.example.multietl.pipelines.base.QueryType;
 
 /**
  * Docker-backed Hadoop MapReduce pipeline.

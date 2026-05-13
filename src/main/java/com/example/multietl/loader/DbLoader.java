@@ -1,11 +1,15 @@
 package com.example.multietl.loader;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DbLoader {
     private static final Logger logger = LoggerFactory.getLogger(DbLoader.class);
@@ -24,18 +28,35 @@ public class DbLoader {
         return DriverManager.getConnection(url, user, password);
     }
 
-    public void insertRunMetadata(String runId, String pipelineName, int batchSize, double avgBatchSize,
-                                  long totalRecords, long malformedRecords, int totalBatches, long runtimeMs) throws SQLException {
-        String sql = "INSERT INTO run_metadata(run_id,pipeline_name,batch_size,avg_batch_size,total_records,malformed_records,total_batches,runtime_ms,created_at) VALUES(?,?,?,?,?,?,?,?,now())";
+    public void insertRunMetadata(
+        String runId,
+        String pipelineName,
+        String batchMode,
+        int batchSize,
+        int batchDays,
+        double avgBatchSize,
+        long totalRecords,
+        long malformedRecords,
+        int totalBatches,
+        long runtimeMs
+    ) throws SQLException {
+        String sql =
+                    "INSERT INTO run_metadata(" +
+                    "run_id, pipeline_name, batch_mode, batch_size, batch_days," +
+                    "avg_batch_size, total_records, malformed_records," +
+                    "total_batches, runtime_ms, created_at" +
+                    ") VALUES(?,?,?,?,?,?,?,?,?,?,now())";
         try (Connection c = getConn(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, runId);
             ps.setString(2, pipelineName);
-            ps.setInt(3, batchSize);
-            ps.setDouble(4, avgBatchSize);
-            ps.setLong(5, totalRecords);
-            ps.setLong(6, malformedRecords);
-            ps.setInt(7, totalBatches);
-            ps.setLong(8, runtimeMs);
+            ps.setString(3, batchMode);
+            ps.setInt(4, batchSize);
+            ps.setInt(5, batchDays);
+            ps.setDouble(6, avgBatchSize);
+            ps.setLong(7, totalRecords);
+            ps.setLong(8, malformedRecords);
+            ps.setInt(9, totalBatches);
+            ps.setLong(10, runtimeMs);
             ps.executeUpdate();
             logger.info("Inserted run_metadata for {}", runId);
         }
@@ -73,11 +94,16 @@ public class DbLoader {
         }
     }
 
-    public void insertBatchMetadata(String runId, String pipelineName, int batchSizeRecords, List<Map<String, Object>> summaries) throws SQLException {
+    public void insertBatchMetadata(String runId, String pipelineName, String batchMode, int batchSizeRecords, int batchDays, List<Map<String, Object>> summaries) throws SQLException {
         if (summaries == null || summaries.isEmpty()) {
             return;
         }
-        String sql = "INSERT INTO batch_metadata(run_id,pipeline_name,batch_id,batch_start_date,batch_end_date,batch_size_records,records_total,malformed_records,created_at) VALUES(?,?,?,?,?,?,?,?,now())";
+        String sql =
+                    "INSERT INTO batch_metadata(" +
+                    "run_id, pipeline_name, batch_id, batch_start_date, batch_end_date," +
+                    "batch_mode, batch_size_records, batch_days," +
+                    "records_total, malformed_records, created_at" +
+                    ") VALUES(?,?,?,?,?,?,?,?,?,?,now())";
         try (Connection c = getConn(); PreparedStatement ps = c.prepareStatement(sql)) {
             for (Map<String, Object> summary : summaries) {
                 ps.setString(1, runId);
@@ -85,9 +111,11 @@ public class DbLoader {
                 ps.setObject(3, summary.getOrDefault("batch_id", 0));
                 ps.setObject(4, summary.getOrDefault("batch_start_date", null));
                 ps.setObject(5, summary.getOrDefault("batch_end_date", null));
-                ps.setInt(6, batchSizeRecords);
-                ps.setObject(7, summary.getOrDefault("records_total", null));
-                ps.setObject(8, summary.getOrDefault("malformed_records", null));
+                ps.setString(6, batchMode);
+                ps.setInt(7, batchSizeRecords);
+                ps.setInt(8, batchDays);
+                ps.setObject(9, summary.getOrDefault("records_total", null));
+                ps.setObject(10, summary.getOrDefault("malformed_records", null));
                 ps.addBatch();
             }
             ps.executeBatch();

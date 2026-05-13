@@ -7,7 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.WeekFields;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -42,32 +41,54 @@ public class BatchManager {
         }
     }
 
-    public static void processFilesByWeek(List<Path> inputFiles, BatchProcessor processor) throws Exception {
-        List<String> chunk = new ArrayList<>();
-        String currentWeek = null;
+    public static void processFilesByDays(
+        List<Path> inputFiles,
+        int numDays,
+        BatchProcessor processor
+        ) throws Exception {
 
-        for (Path inputFile : inputFiles) {
-            try (BufferedReader reader = openReader(inputFile)) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String week = extractWeekKey(line);
-                    if (currentWeek == null) {
-                        currentWeek = week != null ? week : "unknown";
+            if (numDays <= 0) {
+                throw new IllegalArgumentException("numDays must be > 0");
+            }
+
+            List<String> chunk = new ArrayList<>();
+
+            Long currentBucket = null;
+
+            for (Path inputFile : inputFiles) {
+
+                try (BufferedReader reader = openReader(inputFile)) {
+
+                    String line;
+
+                    while ((line = reader.readLine()) != null) {
+
+                        Long bucket = extractDayBucket(line, numDays);
+
+                        if (currentBucket == null && bucket != null) {
+                            currentBucket = bucket;
+                        }
+
+                        if (bucket != null
+                                && !bucket.equals(currentBucket)
+                                && !chunk.isEmpty()) {
+
+                            processor.process(chunk);
+
+                            chunk = new ArrayList<>();
+
+                            currentBucket = bucket;
+                        }
+
+                        chunk.add(line);
                     }
-                    if (week != null && !week.equals(currentWeek) && !chunk.isEmpty()) {
-                        processor.process(chunk);
-                        chunk = new ArrayList<>();
-                        currentWeek = week;
-                    }
-                    chunk.add(line);
                 }
             }
-        }
 
-        if (!chunk.isEmpty()) {
-            processor.process(chunk);
+            if (!chunk.isEmpty()) {
+                processor.process(chunk);
+            }
         }
-    }
 
     private static BufferedReader openReader(Path inputFile) throws Exception {
         InputStream in = Files.newInputStream(inputFile);
@@ -77,23 +98,38 @@ public class BatchManager {
         return new BufferedReader(new InputStreamReader(in, java.nio.charset.StandardCharsets.ISO_8859_1));
     }
 
-    private static String extractWeekKey(String line) {
-        if (line == null) {
-            return null;
+    private static Long extractDayBucket(
+        String line,
+        int numDays
+        ) {
+
+            if (line == null) {
+                return null;
+            }
+
+            int lb = line.indexOf('[');
+            int rb = line.indexOf(']');
+
+            if (lb < 0 || rb <= lb) {
+                return null;
+            }
+
+            try {
+
+                OffsetDateTime timestamp =
+                    OffsetDateTime.parse(
+                        line.substring(lb + 1, rb),
+                        TS_FORMAT
+                    );
+
+                long epochDay =
+                    timestamp.toLocalDate().toEpochDay();
+
+                return epochDay / numDays;
+
+            } catch (Exception e) {
+                return null;
+            }
         }
-        int lb = line.indexOf('[');
-        int rb = line.indexOf(']');
-        if (lb < 0 || rb <= lb) {
-            return null;
-        }
-        try {
-            OffsetDateTime timestamp = OffsetDateTime.parse(line.substring(lb + 1, rb), TS_FORMAT);
-            WeekFields weeks = WeekFields.ISO;
-            int year = timestamp.toLocalDate().get(weeks.weekBasedYear());
-            int week = timestamp.toLocalDate().get(weeks.weekOfWeekBasedYear());
-            return String.format("%04d-W%02d", year, week);
-        } catch (Exception e) {
-            return null;
-        }
-    }
+
 }

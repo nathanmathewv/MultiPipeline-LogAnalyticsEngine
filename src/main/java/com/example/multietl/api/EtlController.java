@@ -1,15 +1,25 @@
 package com.example.multietl.api;
 
-import com.example.multietl.service.EtlService;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.io.File;
-import java.util.*;
+import com.example.multietl.service.EtlService;
 
 @RestController
 @RequestMapping("/api/etl")
@@ -26,14 +36,27 @@ public class EtlController {
 
     @PostMapping("/run")
     public ResponseEntity<?> startJob(
-            @RequestParam String pipeline,
-            @RequestParam String file,
-            @RequestParam(required = false) Integer batchSize,
-            @RequestParam(required = false) Integer batchDays) {
+        @RequestParam String pipeline,
+        @RequestParam String file,
+        @RequestParam(required = false, defaultValue = "records") String batchMode,
+        @RequestParam(required = false, defaultValue = "1000") Integer batchSize,
+        @RequestParam(required = false, defaultValue = "1") Integer batchDays) {
         try {
-            Integer requestedBatchSize = batchSize != null ? batchSize : batchDays;
-            logger.info("Received ETL job request: pipeline={}, file={}, batchSize={}", pipeline, file, requestedBatchSize);
-            String jobId = etlService.submitJob(pipeline, file, requestedBatchSize);
+            logger.info(
+                "Received ETL job request: pipeline={}, file={}, batchMode={}, batchSize={}, batchDays={}",
+                pipeline,
+                file,
+                batchMode,
+                batchSize,
+                batchDays
+            );
+            String jobId = etlService.submitJob(
+                pipeline,
+                file,
+                batchMode,
+                batchSize,
+                batchDays
+            );
             return ResponseEntity.ok(Map.of(
                     "jobId", jobId,
                     "message", "ETL job submitted successfully",
@@ -41,7 +64,8 @@ public class EtlController {
             ));
         } catch (Exception e) {
             logger.error("Failed to submit job", e);
-            return ResponseEntity.badRequest().body(Map.of(
+
+        return ResponseEntity.badRequest().body(Map.of(
                     "error", e.getMessage()
             ));
         }

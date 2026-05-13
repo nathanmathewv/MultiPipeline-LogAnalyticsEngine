@@ -1,11 +1,11 @@
 package com.example.multietl.config;
 
-import org.yaml.snakeyaml.Yaml;
-
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+
+import org.yaml.snakeyaml.Yaml;
 
 public class AppConfig {
     private final Map<String, Object> root;
@@ -32,14 +32,24 @@ public class AppConfig {
         return ((Number) app.getOrDefault("ingest_chunk_size", getBatchSize())).intValue();
     }
 
-    public int getBatchSizeDays() {
+    public void setBatchMode(String batchMode) {
         Map<String, Object> app = getSection("app");
-        return ((Number) app.getOrDefault("batch_size_days", 1)).intValue();
+        app.put("batch_mode", batchMode);
     }
 
     public String getBatchMode() {
         Map<String, Object> app = getSection("app");
         return (String) app.getOrDefault("batch_mode", "records");
+    }
+
+    public void setBatchDays(int batchDays) {
+        Map<String, Object> app = getSection("app");
+        app.put("batch_days", batchDays);
+    }
+
+    public int getBatchDays() {
+        Map<String, Object> app = getSection("app");
+        return ((Number) app.getOrDefault("batch_days", 1)).intValue();
     }
 
     public String getDataDir() {

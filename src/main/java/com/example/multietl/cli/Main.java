@@ -1,13 +1,5 @@
 package com.example.multietl.cli;
 
-import com.example.multietl.EtlApplication;
-import com.example.multietl.config.AppConfig;
-import com.example.multietl.pipelines.base.QueryPlan;
-import com.example.multietl.pipelines.base.QueryType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.boot.SpringApplication;
-
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
@@ -16,6 +8,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.SpringApplication;
+
+import com.example.multietl.EtlApplication;
+import com.example.multietl.config.AppConfig;
+import com.example.multietl.pipelines.base.QueryPlan;
+import com.example.multietl.pipelines.base.QueryType;
 
 public class Main {
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
@@ -45,7 +46,11 @@ public class Main {
             
             AppConfig config = new AppConfig(Path.of("app/config/config.yaml"));
             int batchSizeRecords = args.length >= 3 ? Integer.parseInt(args[2]) : config.getBatchSize();
-            int ingestChunkSize = batchSizeRecords;
+            int ingestChunkSize =
+                    "records".equalsIgnoreCase(config.getBatchMode())
+                        ? batchSizeRecords
+                        : config.getIngestChunkSize();
+
             QueryPlan queryPlan = QueryPlan.all(false);
             
             if (!inputFile.toFile().exists()) {
@@ -53,8 +58,23 @@ public class Main {
                 return;
             }
 
-            logger.info("Starting ETL with pipeline: {}, input: {}, batch size (records): {}, batch mode: {}",
-                pipelineName, inputFile, batchSizeRecords, config.getBatchMode());
+            if ("records".equalsIgnoreCase(config.getBatchMode())) {
+                logger.info(
+                    "Starting ETL with pipeline: {}, input: {}, batch mode: {}, batch size: {}",
+                    pipelineName,
+                    inputFile,
+                    config.getBatchMode(),
+                    batchSizeRecords
+                );
+            } else {
+                logger.info(
+                    "Starting ETL with pipeline: {}, input: {}, batch mode: {}, batch days: {}",
+                    pipelineName,
+                    inputFile,
+                    config.getBatchMode(),
+                    config.getBatchDays()
+                );
+            }
             
             var dbLoader = new com.example.multietl.loader.DbLoader(config.getJdbcUrl(), config.getJdbcUser(), config.getJdbcPassword());
             var controller = new com.example.multietl.orchestrator.Controller(dbLoader, config);
@@ -74,7 +94,22 @@ public class Main {
 
         String pipelineName = promptPipeline(reader);
         QueryPlan queryPlan = promptQueryPlan(reader, false);
-        int batchSizeRecords = promptBatchSizeRecords(reader, config.getBatchSize());
+        String batchMode = promptBatchMode(reader);
+
+        int batchSizeRecords = config.getBatchSize();
+        int batchDays = config.getBatchDays();
+
+        if ("records".equalsIgnoreCase(batchMode)) {
+            batchSizeRecords =
+                promptBatchSizeRecords(reader, config.getBatchSize());
+        }
+        else if ("days".equalsIgnoreCase(batchMode)) {
+            batchDays =
+                promptBatchDays(reader, config.getBatchDays());
+        }
+
+        config.setBatchMode(batchMode);
+        config.setBatchDays(batchDays);
 
         List<Path> inputFiles = resolveDefaultDatasets(config.getDataDir());
         if (inputFiles.isEmpty()) {
@@ -82,9 +117,27 @@ public class Main {
             return;
         }
 
-        int ingestChunkSize = batchSizeRecords;
-        logger.info("Starting ETL with pipeline: {}, inputs: {}, batch size (records): {}, batch mode: {}",
-            pipelineName, inputFiles, batchSizeRecords, config.getBatchMode());
+        int ingestChunkSize =
+                    "records".equalsIgnoreCase(config.getBatchMode())
+                        ? batchSizeRecords
+                        : config.getIngestChunkSize();
+        if ("records".equalsIgnoreCase(config.getBatchMode())) {
+            logger.info(
+                "Starting ETL with pipeline: {}, inputs: {}, batch mode: {}, batch size: {}",
+                pipelineName,
+                inputFiles,
+                config.getBatchMode(),
+                batchSizeRecords
+            );
+        } else {
+            logger.info(
+                "Starting ETL with pipeline: {}, inputs: {}, batch mode: {}, batch days: {}",
+                pipelineName,
+                inputFiles,
+                config.getBatchMode(),
+                config.getBatchDays()
+            );
+        }
 
         var dbLoader = new com.example.multietl.loader.DbLoader(config.getJdbcUrl(), config.getJdbcUser(), config.getJdbcPassword());
         var controller = new com.example.multietl.orchestrator.Controller(dbLoader, config);
@@ -100,13 +153,15 @@ public class Main {
         System.out.println("Select pipeline:");
         System.out.println("  1) mongodb");
         System.out.println("  2) pig (dockerized)");
+        System.out.println("  3) mapreduce");
         while (true) {
-            System.out.print("Enter choice [1-2]: ");
+            System.out.print("Enter choice [1-3]: ");
             String line = reader.readLine();
             if (line == null) return "mongodb";
             line = line.trim();
             if ("1".equals(line)) return "mongodb";
             if ("2".equals(line)) return "pig";
+            if ("3".equals(line)) return "mapreduce";
             System.out.println("Invalid selection. Try again.");
         }
     }
@@ -137,6 +192,34 @@ public class Main {
         }
     }
 
+    private static String promptBatchMode(BufferedReader reader) throws Exception {
+        System.out.println("Select batch mode:");
+        System.out.println("  1) records");
+        System.out.println("  2) days");
+
+        while (true) {
+            System.out.print("Enter choice [1-2]: ");
+
+            String line = reader.readLine();
+
+            if (line == null) {
+                return "records";
+            }
+
+            line = line.trim();
+
+            if ("1".equals(line)) {
+                return "records";
+            }
+
+            if ("2".equals(line)) {
+                return "days";
+            }
+
+            System.out.println("Invalid selection. Try again.");
+        }
+    }
+
     private static int promptBatchSizeRecords(BufferedReader reader, int defaultRecords) throws Exception {
         while (true) {
             System.out.print("Enter batch size (records) [default " + defaultRecords + "]: ");
@@ -149,6 +232,40 @@ public class Main {
                     continue;
                 }
                 return records;
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid number. Try again.");
+            }
+        }
+    }
+
+    private static int promptBatchDays(
+        BufferedReader reader,
+        int defaultDays
+    ) throws Exception {
+
+        while (true) {
+
+            System.out.print(
+                "Enter batch window (days) [default "
+                    + defaultDays + "]: "
+            );
+
+            String line = reader.readLine();
+
+            if (line == null || line.isBlank()) {
+                return defaultDays;
+            }
+
+            try {
+                int days = Integer.parseInt(line.trim());
+
+                if (days <= 0) {
+                    System.out.println("Days must be > 0.");
+                    continue;
+                }
+
+                return days;
+
             } catch (NumberFormatException e) {
                 System.out.println("Invalid number. Try again.");
             }
@@ -204,7 +321,7 @@ public class Main {
         System.out.println("  java -cp target/classes:target/lib/* com.example.multietl.cli.Main server");
         System.out.println("  Server will start on http://localhost:8080");
         System.out.println("\nOR (CLI mode):");
-        System.out.println("  java -cp target/classes:target/lib/* com.example.multietl.cli.Main <pipeline> <input-file> [batch_size_records]");
+        System.out.println("  java -cp target/classes:target/lib/* com.example.multietl.cli.Main <pipeline> <input-file> [batch_size]");
         System.out.println("\nAvailable pipelines: mongodb, pig, mapreduce, hive");
         System.out.println("\nExample:");
         System.out.println("  java -cp target/classes:target/lib/* com.example.multietl.cli.Main mongodb data/raw/sample.log 1000");

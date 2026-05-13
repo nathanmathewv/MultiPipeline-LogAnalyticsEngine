@@ -1,7 +1,5 @@
 package com.example.multietl.reporting;
 
-import com.example.multietl.loader.DbLoader;
-
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,7 +7,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import com.example.multietl.loader.DbLoader;
 
 public class Reporter {
     private final DbLoader dbLoader;
@@ -43,7 +47,13 @@ public class Reporter {
                 appendLine(sb, "Run ID:           " + rs.getString("run_id"));
                 appendLine(sb, "Pipeline:         " + rs.getString("pipeline_name"));
                 appendLine(sb, "Batch ID:         all");
-                appendLine(sb, "Batch size:       " + rs.getInt("batch_size"));
+                appendLine(sb, "Batch mode:       " + rs.getString("batch_mode"));
+                String batchMode = rs.getString("batch_mode");
+                if ("records".equalsIgnoreCase(batchMode)) {
+                    appendLine(sb, "Batch size:       " + rs.getInt("batch_size"));
+                } else if ("days".equalsIgnoreCase(batchMode)) {
+                    appendLine(sb, "Batch days:       " + rs.getInt("batch_days"));
+                }
                 appendLine(sb, "Avg batch size:   " + String.format("%.2f", rs.getDouble("avg_batch_size")));
                 appendLine(sb, "Total records:    " + rs.getLong("total_records"));
                 appendLine(sb, "Malformed records: " + rs.getLong("malformed_records"));
@@ -66,7 +76,7 @@ public class Reporter {
             boolean any = false;
             while (rs.next()) {
                 any = true;
-                appendLine(sb, String.format("Batch %s: %s to %s | Records: %s | Malformed: %s | Batch size: %s",
+                appendLine(sb, String.format("Batch %s: %s to %s | Records: %s | Malformed: %s | Configured batch size: %s",
                     rs.getObject("batch_id"),
                     rs.getString("batch_start_date"),
                     rs.getString("batch_end_date"),

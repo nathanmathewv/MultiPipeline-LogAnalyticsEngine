@@ -1,5 +1,18 @@
 package com.example.multietl.pipelines.mongodb;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+
+import org.bson.Document;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.example.multietl.parser.LogParser;
 import com.example.multietl.parser.LogRecord;
 import com.example.multietl.pipelines.base.Pipeline;
@@ -9,11 +22,6 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import org.bson.Document;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.*;
 
 public class MongoPipeline implements Pipeline {
     private static final Logger logger = LoggerFactory.getLogger(MongoPipeline.class);

@@ -1,20 +1,21 @@
 package com.example.multietl.orchestrator;
 
-import com.example.multietl.loader.DbLoader;
-import com.example.multietl.pipelines.Strategy.PipelineFactory;
-import com.example.multietl.pipelines.base.Pipeline;
-import com.example.multietl.pipelines.base.QueryPlan;
-import com.example.multietl.config.AppConfig;
-import com.example.multietl.reporting.Reporter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.example.multietl.config.AppConfig;
+import com.example.multietl.loader.DbLoader;
+import com.example.multietl.pipelines.Strategy.PipelineFactory;
+import com.example.multietl.pipelines.base.Pipeline;
+import com.example.multietl.pipelines.base.QueryPlan;
+import com.example.multietl.reporting.Reporter;
 
 public class Controller {
     private static final Logger logger = LoggerFactory.getLogger(Controller.class);
@@ -49,12 +50,31 @@ public class Controller {
             }
         };
 
-        if ("week".equalsIgnoreCase(config.getBatchMode()) || "weekly".equalsIgnoreCase(config.getBatchMode())) {
-            logger.info("Using weekly record batching");
-            BatchManager.processFilesByWeek(inputFiles, processor);
+        if ("days".equalsIgnoreCase(config.getBatchMode())) {
+
+            logger.info(
+                "Using temporal batching with {} day windows",
+                config.getBatchDays()
+            );
+
+            BatchManager.processFilesByDays(
+                inputFiles,
+                config.getBatchDays(),
+                processor
+            );
+
         } else {
-            logger.info("Using fixed-size record batching with chunk size {}", ingestChunkSize);
-            BatchManager.processFilesInChunks(inputFiles, ingestChunkSize, processor);
+
+            logger.info(
+                "Using fixed-size record batching with chunk size {}",
+                ingestChunkSize
+            );
+
+            BatchManager.processFilesInChunks(
+                inputFiles,
+                ingestChunkSize,
+                processor
+            );
         }
 
         Map<String, List<Map<String, Object>>> results = pipeline.finalizeRun(queryPlan);
@@ -68,8 +88,26 @@ public class Controller {
         double avgBatchSize = totalBatches == 0 ? 0.0 : ((double) totalRecords) / totalBatches;
 
         // persist metadata and results
-        dbLoader.insertRunMetadata(runId, pipelineName, batchSize, avgBatchSize, totalRecords, malformed, totalBatches, runtimeMs);
-        dbLoader.insertBatchMetadata(runId, pipelineName, batchSize, pipeline.getBatchSummaries());
+        dbLoader.insertRunMetadata(
+            runId,
+            pipelineName,
+            config.getBatchMode(),
+            batchSize,
+            config.getBatchDays(),
+            avgBatchSize,
+            totalRecords,
+            malformed,
+            totalBatches,
+            runtimeMs
+        );
+        dbLoader.insertBatchMetadata(
+            runId,
+            pipelineName,
+            config.getBatchMode(),
+            batchSize,
+            config.getBatchDays(),
+            pipeline.getBatchSummaries()
+        );
         dbLoader.insertMalformedSummary(runId, pipelineName, totalRecords, malformed);
         dbLoader.insertEtlResults(runId, pipelineName, results);
 

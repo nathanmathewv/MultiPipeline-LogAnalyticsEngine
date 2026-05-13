@@ -1,15 +1,22 @@
 package com.example.multietl.pipelines.common;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.example.multietl.parser.LogParser;
 import com.example.multietl.parser.LogRecord;
 import com.example.multietl.pipelines.base.Pipeline;
 import com.example.multietl.pipelines.base.QueryPlan;
 import com.example.multietl.pipelines.base.QueryType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Common in-memory pipeline implementation used by Pig, MapReduce, Hive, and other non-MongoDB backends.
@@ -24,16 +31,16 @@ public class CommonPipeline implements Pipeline {
     private long processed = 0;
     private long rawLoaded = 0;
     private int ingestChunks = 0;
-    private int batchSizeRecords = 1;
+    private int batchSize = 1;
     private final List<String> rawLines = new ArrayList<>();
     private final List<LogRecord> allRecords = new ArrayList<>();
     private List<Map<String, Object>> batchSummaries = new ArrayList<>();
 
     @Override
-    public void startRun(String runId, int batchSizeRecords) {
+    public void startRun(String runId, int batchSize) {
         this.runId = runId;
-        this.batchSizeRecords = Math.max(1, batchSizeRecords);
-        logger.info("CommonPipeline started run {} with batchSizeRecords={}", runId, this.batchSizeRecords);
+        this.batchSize = Math.max(1, batchSize);
+        logger.info("CommonPipeline started run {} with batchSize={}", runId, this.batchSize);
     }
 
     @Override
@@ -68,7 +75,7 @@ public class CommonPipeline implements Pipeline {
         summary.put("batch_id", chunkId);
         summary.put("batch_start_date", firstDate);
         summary.put("batch_end_date", lastDate);
-        summary.put("batch_size_records", batchSizeRecords);
+        summary.put("batch_size_records", batchSize);
         summary.put("records_total", (long) rawLines.size());
         summary.put("malformed_records", (long) batchMalformed);
         batchSummaries.add(summary);

@@ -3,6 +3,8 @@ CREATE TABLE IF NOT EXISTS run_metadata (
   id SERIAL PRIMARY KEY,
   run_id TEXT UNIQUE NOT NULL,
   pipeline_name TEXT NOT NULL,
+  batch_mode VARCHAR(20),
+  batch_days INTEGER,
   batch_size INTEGER NOT NULL,
   avg_batch_size DOUBLE PRECISION,
   total_records BIGINT,
@@ -32,6 +34,8 @@ CREATE TABLE IF NOT EXISTS batch_metadata (
   id SERIAL PRIMARY KEY,
   run_id TEXT NOT NULL,
   pipeline_name TEXT NOT NULL,
+  batch_mode VARCHAR(20),
+  batch_days INTEGER,
   batch_id INTEGER NOT NULL,
   batch_start_date TEXT,
   batch_end_date TEXT,
@@ -40,9 +44,6 @@ CREATE TABLE IF NOT EXISTS batch_metadata (
   malformed_records BIGINT,
   created_at TIMESTAMP DEFAULT now()
 );
-
-ALTER TABLE batch_metadata
-  ADD COLUMN IF NOT EXISTS batch_size_records INTEGER;
 
 CREATE TABLE IF NOT EXISTS malformed_summary (
   id SERIAL PRIMARY KEY,

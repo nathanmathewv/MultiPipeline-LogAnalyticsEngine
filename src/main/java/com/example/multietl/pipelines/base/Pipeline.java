@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 public interface Pipeline {
-    void startRun(String runId, int batchSizeDays);
+    void startRun(String runId, int batchSize);
 
     /**
      * Process a chunk of raw log lines. chunkId starts at 1.

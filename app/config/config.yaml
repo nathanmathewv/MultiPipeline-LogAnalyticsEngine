@@ -1,9 +1,9 @@
 app:
   data_dir: data/raw
-  batch_size: 1000
   ingest_chunk_size: 10000
-  batch_size_days: 1
   batch_mode: records
+  batch_size: 1000
+  batch_days: 1
 
 
 mongodb:

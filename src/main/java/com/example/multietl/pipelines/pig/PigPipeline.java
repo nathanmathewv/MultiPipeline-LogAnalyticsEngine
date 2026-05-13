@@ -1,24 +1,21 @@
 package com.example.multietl.pipelines.pig;
 
-import com.example.multietl.config.AppConfig;
-import com.example.multietl.pipelines.base.Pipeline;
-import com.example.multietl.pipelines.base.QueryPlan;
-import com.example.multietl.pipelines.base.QueryType;
-
 import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import com.example.multietl.config.AppConfig;
+import com.example.multietl.pipelines.base.Pipeline;
+import com.example.multietl.pipelines.base.QueryPlan;
+import com.example.multietl.pipelines.base.QueryType;
 
 /**
  * Apache Pig pipeline implementation using a containerized Pig runner.
@@ -165,8 +162,8 @@ public class PigPipeline implements Pipeline {
         String image = getPigImage();
         String scriptPath = getPigScriptPath();
         String workspace = Path.of("").toAbsolutePath().toString();
-        String inputGlob = inputDir.toString() + "/*.log";
-        String outputPath = outputDir.toString();
+        String inputGlob = inputDir.toAbsolutePath().toString().replace("\\", "/");        
+        String outputPath = outputDir.toAbsolutePath().toString().replace("\\", "/");
 
         List<String> cmd = new ArrayList<>();
         cmd.add("docker");
@@ -183,9 +180,9 @@ public class PigPipeline implements Pipeline {
         cmd.add("-f");
         cmd.add("/workspace/" + scriptPath);
         cmd.add("-param");
-        cmd.add("INPUT=/workspace/" + inputGlob);
+        cmd.add("INPUT=" + inputGlob);        
         cmd.add("-param");
-        cmd.add("OUTPUT=/workspace/" + outputPath);
+        cmd.add("OUTPUT=" + outputPath);
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.inheritIO();
         Process proc = pb.start();
