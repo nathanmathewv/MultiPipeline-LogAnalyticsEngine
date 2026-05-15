@@ -162,8 +162,8 @@ public class PigPipeline implements Pipeline {
         String image = getPigImage();
         String scriptPath = getPigScriptPath();
         String workspace = Path.of("").toAbsolutePath().toString();
-        String inputGlob = inputDir.toAbsolutePath().toString().replace("\\", "/");        
-        String outputPath = outputDir.toAbsolutePath().toString().replace("\\", "/");
+        String inputGlob = "/workspace/" + inputDir.toString().replace("\\", "/");
+String outputPath = "/workspace/" + outputDir.toString().replace("\\", "/");
 
         List<String> cmd = new ArrayList<>();
         cmd.add("docker");

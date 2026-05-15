@@ -104,7 +104,7 @@ jdbc:
    curl -X POST "http://localhost:8080/api/etl/run" \
      -G \
      --data-urlencode "pipeline=mongodb" \
-     --data-urlencode "file=NASA_access_log_Jul95" \
+     --data-urlencode "file=NASA_access_log_Jul95.log" \
      --data-urlencode "batchSize=50000"
    ```
 
