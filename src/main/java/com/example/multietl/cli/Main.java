@@ -154,14 +154,24 @@ public class Main {
         System.out.println("  1) mongodb");
         System.out.println("  2) pig (dockerized)");
         System.out.println("  3) mapreduce");
+        System.out.println("  4) hive (dockerized)");
+
         while (true) {
-            System.out.print("Enter choice [1-3]: ");
+            System.out.print("Enter choice [1-4]: ");
+
             String line = reader.readLine();
-            if (line == null) return "mongodb";
+
+            if (line == null) {
+                return "mongodb";
+            }
+
             line = line.trim();
+
             if ("1".equals(line)) return "mongodb";
             if ("2".equals(line)) return "pig";
             if ("3".equals(line)) return "mapreduce";
+            if ("4".equals(line)) return "hive";
+
             System.out.println("Invalid selection. Try again.");
         }
     }
