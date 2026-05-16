@@ -5,57 +5,73 @@
 raw = LOAD '$INPUT' USING TextLoader() AS (line:chararray);
 
 parsed = FOREACH raw GENERATE
+  line AS line,
+
   REGEX_EXTRACT(
     line,
-    '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+) (\\S+)" (\\d{3}) (\\S+)',
+    '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "([^"]*)" (\\d{3}) (\\S+)',
     1
   ) AS host,
 
   REGEX_EXTRACT(
     line,
-    '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+) (\\S+)" (\\d{3}) (\\S+)',
+    '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "([^"]*)" (\\d{3}) (\\S+)',
     2
   ) AS ts,
 
   REGEX_EXTRACT(
     line,
-    '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+) (\\S+)" (\\d{3}) (\\S+)',
-    4
-  ) AS resource_path,
+    '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "([^"]*)" (\\d{3}) (\\S+)',
+    3
+  ) AS request,
 
-  (int)(
+  REGEX_EXTRACT(
     REGEX_EXTRACT(
       line,
-      '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+) (\\S+)" (\\d{3}) (\\S+)',
-      6
-    )
+      '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "([^"]*)" (\\d{3}) (\\S+)',
+      3
+    ),
+    '^\\S+\\s+(\\S+)',
+    1
+  ) AS resource_path,
+
+  (int)REGEX_EXTRACT(
+    line,
+    '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "([^"]*)" (\\d{3}) (\\S+)',
+    4
   ) AS status_code,
 
   REPLACE(
     REGEX_EXTRACT(
       line,
-      '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+) (\\S+)" (\\d{3}) (\\S+)',
-      7
+      '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "([^"]*)" (\\d{3}) (\\S+)',
+      5
     ),
     '-',
     '0'
   ) AS bytes_str;
 
 good = FILTER parsed BY
-  host IS NOT NULL AND
-  ts IS NOT NULL AND
-  status_code IS NOT NULL;
+  host IS NOT NULL AND host != '' AND
+  ts IS NOT NULL AND ts != '' AND
+  request IS NOT NULL AND request != '' AND
+  resource_path IS NOT NULL AND resource_path != '' AND
+  status_code IS NOT NULL AND
+  bytes_str IS NOT NULL AND bytes_str != '';
 
 bad = FILTER parsed BY
-  host IS NULL OR
-  ts IS NULL OR
-  status_code IS NULL;
+  host IS NULL OR host == '' OR
+  ts IS NULL OR ts == '' OR
+  request IS NULL OR request == '' OR
+  resource_path IS NULL OR resource_path == '' OR
+  status_code IS NULL OR
+  bytes_str IS NULL OR bytes_str == '';
 
 with_parts = FOREACH good GENERATE
   host,
   resource_path,
   status_code,
-  (long)(bytes_str) AS bytes_val,
+  (long)bytes_str AS bytes_val,
 
   REGEX_EXTRACT(
     ts,
@@ -75,12 +91,10 @@ with_parts = FOREACH good GENERATE
     3
   ) AS year_s,
 
-  (int)(
-    REGEX_EXTRACT(
-      ts,
-      '^(\\d{2})/(\\w{3})/(\\d{4}):(\\d{2})',
-      4
-    )
+  (int)REGEX_EXTRACT(
+    ts,
+    '^(\\d{2})/(\\w{3})/(\\d{4}):(\\d{2})',
+    4
   ) AS log_hour;
 
 with_mon = FOREACH with_parts GENERATE
@@ -131,7 +145,7 @@ enriched = FOREACH with_mon GENERATE
     CONCAT('-', mon_num)
   ) AS log_month;
 
--- Q1
+-- Q1: Daily Traffic Summary
 q1_grp = GROUP enriched BY (log_date, status_code);
 
 q1 = FOREACH q1_grp GENERATE
@@ -145,7 +159,7 @@ STORE q1_sorted
 INTO '$OUTPUT/q1'
 USING PigStorage('\t');
 
--- Q2
+-- Q2: Top Requested Resources
 q2_grp = GROUP enriched BY (log_month, resource_path);
 
 q2 = FOREACH q2_grp {
@@ -164,7 +178,7 @@ STORE q2_sorted
 INTO '$OUTPUT/q2'
 USING PigStorage('\t');
 
--- Q3
+-- Q3: Hourly Error Analysis
 q3_grp = GROUP enriched BY (log_date, log_hour);
 
 q3 = FOREACH q3_grp {
@@ -186,20 +200,17 @@ INTO '$OUTPUT/q3'
 USING PigStorage('\t');
 
 -- Malformed summary
-all_grp = GROUP parsed ALL;
-bad_grp = GROUP bad ALL;
+all_grp = GROUP raw ALL;
+good_grp = GROUP good ALL;
 
-all_cnt = FOREACH all_grp GENERATE
-  COUNT(parsed) AS total;
+all_cnt = FOREACH all_grp GENERATE COUNT(raw) AS total;
+good_cnt = FOREACH good_grp GENERATE COUNT(good) AS good_tot;
 
-bad_cnt = FOREACH bad_grp GENERATE
-  COUNT(bad) AS malformed;
-
-mal_cross = CROSS all_cnt, bad_cnt;
+mal_cross = CROSS all_cnt, good_cnt;
 
 malformed_summary = FOREACH mal_cross GENERATE
   all_cnt::total AS total,
-  bad_cnt::malformed AS malformed;
+  (all_cnt::total - good_cnt::good_tot) AS malformed;
 
 STORE malformed_summary
 INTO '$OUTPUT/malformed_summary'

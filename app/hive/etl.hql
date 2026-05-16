@@ -3,6 +3,7 @@ set mapreduce.framework.name=local;
 set hive.exec.dynamic.partition=true;
 set hive.exec.dynamic.partition.mode=nonstrict;
 set hive.strict.checks.cartesian.product=false;
+set hive.cli.print.header=false;
 
 DROP TABLE IF EXISTS parsed_logs;
 CREATE EXTERNAL TABLE parsed_logs (
@@ -48,7 +49,9 @@ SELECT
         END
     ) AS log_month
 FROM parsed_logs
-WHERE host IS NOT NULL AND status_code IS NOT NULL;
+WHERE host IS NOT NULL 
+  AND status_code IS NOT NULL
+  AND split(request, ' ')[1] IS NOT NULL;
 
 INSERT OVERWRITE LOCAL DIRECTORY '${OUTPUT}/q1'
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
@@ -77,10 +80,11 @@ FROM enriched
 GROUP BY log_date, log_hour
 ORDER BY log_date ASC, log_hour ASC;
 
+-- Malformed Summary
 INSERT OVERWRITE LOCAL DIRECTORY '${OUTPUT}/malformed_summary'
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
-SELECT a.tot, b.mal
+SELECT a.tot, (a.tot - b.good)
 FROM 
   (SELECT COUNT(*) as tot FROM parsed_logs) a
 CROSS JOIN
-  (SELECT COUNT(*) as mal FROM parsed_logs WHERE host IS NULL) b;
+  (SELECT COUNT(*) as good FROM enriched) b;
