@@ -92,6 +92,16 @@ public class AppConfig {
         return (String) pig.getOrDefault("script", "app/pig/etl.pig");
     }
 
+    public String getHiveImage() {
+        Map<String, Object> hive = getSection("hive");
+        return (String) hive.getOrDefault("image", "multietl-hive:latest");
+    }
+
+    public String getHiveScriptPath() {
+        Map<String, Object> hive = getSection("hive");
+        return (String) hive.getOrDefault("script", "app/hive/etl.hql");
+    }
+
     public String getMapReduceImage() {
         Map<String, Object> mapreduce = getSection("mapreduce");
         return (String) mapreduce.getOrDefault("image", "multietl-mapreduce:latest");
