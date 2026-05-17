@@ -42,7 +42,7 @@ public class DbLoader {
     ) throws SQLException {
         String sql =
                     "INSERT INTO run_metadata(" +
-                    "run_id, pipeline_name, batch_mode, batch_size, batch_days," +
+                    "run_id, pipeline_name, batch_mode, batch_records, batch_days," +
                     "avg_batch_size, total_records, malformed_records," +
                     "total_batches, runtime_ms, created_at" +
                     ") VALUES(?,?,?,?,?,?,?,?,?,?,now())";
@@ -101,7 +101,7 @@ public class DbLoader {
         String sql =
                     "INSERT INTO batch_metadata(" +
                     "run_id, pipeline_name, batch_id, batch_start_date, batch_end_date," +
-                    "batch_mode, batch_size_records, batch_days," +
+                    "batch_mode, batch_records, batch_days," +
                     "records_total, malformed_records, created_at" +
                     ") VALUES(?,?,?,?,?,?,?,?,?,?,now())";
         try (Connection c = getConn(); PreparedStatement ps = c.prepareStatement(sql)) {

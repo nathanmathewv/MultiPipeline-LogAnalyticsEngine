@@ -24,7 +24,12 @@ public class AppConfig {
 
     public int getBatchSize() {
         Map<String, Object> app = getSection("app");
-        return ((Number) app.getOrDefault("batch_size", 1000)).intValue();
+        return ((Number) app.getOrDefault("batch_size", 100000)).intValue();
+    }
+
+    public void setBatchSize(int batchSize) {
+        Map<String,Object> app = getSection("app");
+        app.put("batch_size", batchSize);
     }
 
     public int getIngestChunkSize() {

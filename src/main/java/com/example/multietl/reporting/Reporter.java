@@ -50,7 +50,7 @@ public class Reporter {
                 appendLine(sb, "Batch mode:       " + rs.getString("batch_mode"));
                 String batchMode = rs.getString("batch_mode");
                 if ("records".equalsIgnoreCase(batchMode)) {
-                    appendLine(sb, "Batch size:       " + rs.getInt("batch_size"));
+                    appendLine(sb, "Batch size:       " + rs.getInt("batch_records"));
                 } else if ("days".equalsIgnoreCase(batchMode)) {
                     appendLine(sb, "Batch days:       " + rs.getInt("batch_days"));
                 }
@@ -76,13 +76,22 @@ public class Reporter {
             boolean any = false;
             while (rs.next()) {
                 any = true;
-                appendLine(sb, String.format("Batch %s: %s to %s | Records: %s | Malformed: %s | Configured batch size: %s",
+                String mode = rs.getString("batch_mode");
+
+                String batchConfig =
+                    "records".equalsIgnoreCase(mode)
+                        ? rs.getObject("batch_records") + " records"
+                        : rs.getObject("batch_days") + " days";
+
+                appendLine(sb, String.format(
+                    "Batch %s: %s to %s | Records: %s | Malformed: %s | Config: %s",
                     rs.getObject("batch_id"),
                     rs.getString("batch_start_date"),
                     rs.getString("batch_end_date"),
                     rs.getObject("records_total"),
                     rs.getObject("malformed_records"),
-                    rs.getObject("batch_size_records")));
+                    batchConfig
+                ));
             }
             if (!any) {
                 appendLine(sb, "No batch metadata found.");

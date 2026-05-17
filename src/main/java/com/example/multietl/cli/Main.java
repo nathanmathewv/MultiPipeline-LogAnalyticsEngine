@@ -47,9 +47,7 @@ public class Main {
             AppConfig config = new AppConfig(Path.of("app/config/config.yaml"));
             int batchSizeRecords = args.length >= 3 ? Integer.parseInt(args[2]) : config.getBatchSize();
             int ingestChunkSize =
-                    "records".equalsIgnoreCase(config.getBatchMode())
-                        ? batchSizeRecords
-                        : config.getIngestChunkSize();
+                config.getIngestChunkSize();
 
             QueryPlan queryPlan = QueryPlan.all(false);
             
@@ -110,6 +108,7 @@ public class Main {
 
         config.setBatchMode(batchMode);
         config.setBatchDays(batchDays);
+        config.setBatchSize(batchSizeRecords);
 
         List<Path> inputFiles = resolveDefaultDatasets(config.getDataDir());
         if (inputFiles.isEmpty()) {
@@ -118,9 +117,8 @@ public class Main {
         }
 
         int ingestChunkSize =
-                    "records".equalsIgnoreCase(config.getBatchMode())
-                        ? batchSizeRecords
-                        : config.getIngestChunkSize();
+                config.getIngestChunkSize();
+
         if ("records".equalsIgnoreCase(config.getBatchMode())) {
             logger.info(
                 "Starting ETL with pipeline: {}, inputs: {}, batch mode: {}, batch size: {}",
@@ -284,8 +282,8 @@ public class Main {
 
     private static List<Path> resolveDefaultDatasets(String dataDir) {
         List<Path> files = new ArrayList<>();
-        addFirstExisting(files, dataDir, "NASA_access_log_Jul95", "NASA_access_log_Jul95.log", "NASA_access_log_Jul95.gz");
-        addFirstExisting(files, dataDir, "NASA_access_log_Aug95", "NASA_access_log_Aug95.log", "NASA_access_log_Aug95.gz");
+        addFirstExisting(files, dataDir, "access_log_Jul95", "NASA_access_log_Jul95.log", "NASA_access_log_Jul95.gz");
+        addFirstExisting(files, dataDir, "access_log_Aug95", "NASA_access_log_Aug95.log", "NASA_access_log_Aug95.gz");
         return files;
     }
 

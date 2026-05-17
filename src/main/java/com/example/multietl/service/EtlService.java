@@ -48,9 +48,7 @@ public class EtlService {
                 : config.getBatchDays();
 
         int ingestChunkSize =
-                "records".equalsIgnoreCase(batchMode)
-                    ? actualBatchSizeRecords
-                    : config.getIngestChunkSize();
+        config.getIngestChunkSize();
         
         List<Path> inputPaths = resolveInputFiles(inputFile, config.getDataDir());
         if (inputPaths.isEmpty()) {

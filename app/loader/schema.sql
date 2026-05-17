@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS run_metadata (
   pipeline_name TEXT NOT NULL,
   batch_mode VARCHAR(20),
   batch_days INTEGER,
-  batch_size INTEGER NOT NULL,
+  batch_records INTEGER NOT NULL,
   avg_batch_size DOUBLE PRECISION,
   total_records BIGINT,
   malformed_records BIGINT,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS batch_metadata (
   batch_id INTEGER NOT NULL,
   batch_start_date TEXT,
   batch_end_date TEXT,
-  batch_size_records INTEGER,
+  batch_records INTEGER,
   records_total BIGINT,
   malformed_records BIGINT,
   created_at TIMESTAMP DEFAULT now()

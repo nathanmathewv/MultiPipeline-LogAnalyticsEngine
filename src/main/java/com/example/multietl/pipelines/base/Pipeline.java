@@ -11,6 +11,14 @@ public interface Pipeline {
      */
     void processBatch(List<String> rawLines, int chunkId) throws Exception;
 
+    default void setBatchMode(String batchMode) {
+    // no-op by default
+    }
+
+    default void setDaysBatchSize(
+        int daysBatchSize
+    ) {}
+
     /** Finalize and run queries; return query results keyed by query name. */
     Map<String, List<Map<String, Object>>> finalizeRun(QueryPlan plan) throws Exception;
 

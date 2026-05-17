@@ -39,7 +39,7 @@ public class EtlController {
         @RequestParam String pipeline,
         @RequestParam String file,
         @RequestParam(required = false, defaultValue = "records") String batchMode,
-        @RequestParam(required = false, defaultValue = "1000") Integer batchSize,
+        @RequestParam(required = false, defaultValue = "100000") Integer batchSize,
         @RequestParam(required = false, defaultValue = "1") Integer batchDays) {
         try {
             logger.info(

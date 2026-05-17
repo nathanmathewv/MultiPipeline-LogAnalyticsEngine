@@ -75,7 +75,7 @@ public class CommonPipeline implements Pipeline {
         summary.put("batch_id", chunkId);
         summary.put("batch_start_date", firstDate);
         summary.put("batch_end_date", lastDate);
-        summary.put("batch_size_records", batchSize);
+        summary.put("batch_records", batchSize);
         summary.put("records_total", (long) rawLines.size());
         summary.put("malformed_records", (long) batchMalformed);
         batchSummaries.add(summary);

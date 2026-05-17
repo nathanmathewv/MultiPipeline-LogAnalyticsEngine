@@ -36,6 +36,21 @@ public class Controller {
                                   java.util.function.Consumer<Map<String, Object>> metricsCallback) throws Exception {
         String runId = UUID.randomUUID().toString();
         Pipeline pipeline = PipelineFactory.create(pipelineName, config);
+
+        pipeline.setBatchMode(
+            config.getBatchMode()
+        );
+
+        pipeline.setDaysBatchSize(
+            config.getBatchDays()
+        );
+
+        if ("records".equalsIgnoreCase(
+            config.getBatchMode())) {
+
+            batchSize = ingestChunkSize;
+        }
+
         pipeline.startRun(runId, batchSize);
 
         Instant start = Instant.now();
@@ -50,32 +65,16 @@ public class Controller {
             }
         };
 
-        if ("days".equalsIgnoreCase(config.getBatchMode())) {
+        logger.info(
+            "Using record chunking with chunk size {}",
+            ingestChunkSize
+        );
 
-            logger.info(
-                "Using temporal batching with {} day windows",
-                config.getBatchDays()
-            );
-
-            BatchManager.processFilesByDays(
-                inputFiles,
-                config.getBatchDays(),
-                processor
-            );
-
-        } else {
-
-            logger.info(
-                "Using fixed-size record batching with chunk size {}",
-                ingestChunkSize
-            );
-
-            BatchManager.processFilesInChunks(
-                inputFiles,
-                ingestChunkSize,
-                processor
-            );
-        }
+        BatchManager.processFilesInChunks(
+            inputFiles,
+            ingestChunkSize,
+            processor
+        );
 
         Map<String, List<Map<String, Object>>> results = pipeline.finalizeRun(queryPlan);
         Instant end = Instant.now();

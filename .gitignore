@@ -15,7 +15,8 @@ build/
 .gradle/
 postgres_data/
 mongo_data/
-
+data/raw/access_log_Aug95
+data/raw/access_log_Jul95
 # Dataset files - must be placed in data/raw/ locally
 data/raw/NASA_access_log_*
 data/raw/medium_*.log
