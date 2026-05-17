@@ -48,7 +48,7 @@ public class Controller {
         if ("records".equalsIgnoreCase(
             config.getBatchMode())) {
 
-            batchSize = ingestChunkSize;
+            ingestChunkSize = batchSize;
         }
 
         pipeline.startRun(runId, batchSize);

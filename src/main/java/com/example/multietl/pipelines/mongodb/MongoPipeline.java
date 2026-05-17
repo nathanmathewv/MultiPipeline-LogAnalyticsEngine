@@ -296,19 +296,29 @@ public class MongoPipeline implements Pipeline {
         }
 
         // DAYS MODE
+        Map<Integer, Long> malformedPerBatch =
+        new HashMap<>();
 
-        // Build per-batch malformed counts from MongoDB — the source of truth.
-        // dateStats[1] cannot be used here because malformed records have a null
-        // log_date and are never inserted into dateStats, causing every batch to
-        // report malformed_records=0 even when the run-level total is non-zero.
-        // A single aggregation is cheaper than N per-batch countDocuments calls.
-        Map<Integer, Long> malformedPerBatch = new HashMap<>();
         parsedColl.aggregate(Arrays.asList(
-            new Document("$match",  new Document("run_id", runId).append("malformed", true)),
-            new Document("$group",  new Document("_id", "$batch_id")
-                .append("count", new Document("$sum", 1)))
-        )).into(new ArrayList<>()).forEach(d ->
-            malformedPerBatch.put(d.getInteger("_id"), ((Number) d.get("count")).longValue())
+            new Document(
+                "$match",
+                new Document("run_id", runId)
+                    .append("malformed", true)
+            ),
+            new Document(
+                "$group",
+                new Document("_id", "$batch_id")
+                    .append(
+                        "count",
+                        new Document("$sum",1)
+                    )
+            )
+        )).forEach(d ->
+            malformedPerBatch.put(
+                d.getInteger("_id"),
+                ((Number)d.get("count"))
+                    .longValue()
+            )
         );
 
         List<String> dates =
@@ -316,31 +326,80 @@ public class MongoPipeline implements Pipeline {
 
         Collections.sort(dates);
 
-        Map<Integer, Map<String, Object>> summaries =
+        Map<Integer, Map<String,Object>> summaries =
             new LinkedHashMap<>();
 
         for (int i = 0; i < dates.size(); i++) {
 
-            String date   = dates.get(i);
-            int  batchId  = (i / daysBatchSize) + 1;
+            String date = dates.get(i);
 
-            Map<String, Object> summary =
-                summaries.computeIfAbsent(batchId, id -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("batch_id",         id);
-                    m.put("batch_days",        daysBatchSize);
-                    m.put("batch_start_date",  date);
-                    m.put("batch_end_date",    date);
-                    m.put("records_total",     0L);
-                    m.put("malformed_records", malformedPerBatch.getOrDefault(id, 0L));
-                    return m;
-                });
+            int batchId =
+                (i / daysBatchSize) + 1;
 
-            summary.put("batch_end_date", date);
+            Map<String,Object> summary =
+                summaries.computeIfAbsent(
+                    batchId,
+                    id -> {
 
-            long[] stats = dateStats.get(date);
-            summary.put("records_total",
-                (Long) summary.get("records_total") + stats[0]);
+                        Map<String,Object> m =
+                            new LinkedHashMap<>();
+
+                        m.put("batch_id", id);
+                        m.put("batch_days", daysBatchSize);
+                        m.put("batch_start_date", date);
+                        m.put("batch_end_date", date);
+
+                        // start with malformed count
+                        m.put(
+                            "records_total",0L
+                        );
+
+                        m.put(
+                            "malformed_records",
+                            malformedPerBatch.getOrDefault(id,0L)
+                        );
+
+                        return m;
+                    });
+
+            summary.put(
+                "batch_end_date",
+                date
+            );
+
+            long[] stats =
+                dateStats.get(date);
+
+            summary.put(
+                "records_total",
+                (Long)summary.get("records_total")
+                    + stats[0]
+            );
+        }
+
+        long assignedTotal = 0;
+
+        for (Map<String,Object> summary : summaries.values()) {
+            assignedTotal +=
+                (Long) summary.get("records_total");
+        }
+
+        long missing =
+            (processed + malformedCount)
+            - assignedTotal;
+
+        if (!summaries.isEmpty()) {
+
+            Map<String,Object> last =
+                summaries.get(
+                    summaries.size()
+                );
+
+            last.put(
+                "records_total",
+                (Long)last.get("records_total")
+                    + missing
+            );
         }
 
         return new ArrayList<>(summaries.values());
