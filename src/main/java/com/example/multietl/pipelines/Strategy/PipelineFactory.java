@@ -20,7 +20,7 @@ public class PipelineFactory {
             case "mapreduce":
                 return new MapReducePipeline();
             case "hive":
-                return new HivePipeline();
+                return new HivePipeline(config);
             default:
                 throw new IllegalArgumentException("Unknown pipeline: " + name);
         }

@@ -86,4 +86,9 @@ public class AppConfig {
         Map<String, Object> hive = getSection("hive");
         return (String) hive.getOrDefault("script", "app/hive/etl.hql");
     }
+
+    public String getHiveImage() {
+        Map<String, Object> hive = getSection("hive");
+        return (String) hive.getOrDefault("image", "multietl-hive:latest");
+    }
 }

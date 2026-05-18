@@ -46,7 +46,7 @@ The Multi-Pipeline ETL Framework is a modular Java-based system that allows exec
 **Status**: Implemented through their pipeline adapters.
 
 - Pig executes parsing, batch assignment, malformed summaries, and the three aggregations through `app/pig/etl.pig`.
-- Hive has a matching HiveQL workflow in `app/hive/etl.hql` for Hive runtimes; the CLI keeps a local adapter for development machines without Hive installed.
+- Hive executes parsing, batch assignment, malformed summaries, and the three aggregations through `app/hive/etl.hql` in the `multietl-hive:latest` Docker image.
 - MapReduce runs explicit local MapReduce-style jobs under `src/main/java/com/example/multietl/pipelines/mapreduce/jobs`.
 
 ### 4. Orchestrator (`app/orchestrator/`)

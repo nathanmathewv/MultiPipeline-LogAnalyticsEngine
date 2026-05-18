@@ -23,12 +23,12 @@
 - Easier to test and debug
 - Allows either date-window batches or fixed-record batches in the same CLI/API workflow
 ## 4. Shared Canonical Parser for Java Pipelines
-**Decision**: MongoDB, MapReduce jobs, and the local Hive adapter use the same `LogParser.java`; Pig and Hive scripts perform equivalent parsing in `app/pig/etl.pig` and `app/hive/etl.hql`
+**Decision**: MongoDB and MapReduce jobs use the same `LogParser.java`; Pig and Hive scripts perform equivalent parsing in `app/pig/etl.pig` and `app/hive/etl.hql`
 **Rationale**:
-- Eliminates duplicate parsing logic in Java adapters
+- Eliminates duplicate parsing logic in Java-backed pipelines
 - Ensures consistency across Java-backed pipelines
 - Keeps Pig parsing inside Pig for demonstrations that require pipeline-owned loading and cleaning
-- Easier to update parsing rules in one place
+- Keeps Hive parsing inside Hive while preserving the same accepted NASA log variants
 
 ## 5. Pipeline Interface as Strategy Pattern
 **Decision**: Abstract Pipeline with concrete implementations, PipelineFactory for selection  

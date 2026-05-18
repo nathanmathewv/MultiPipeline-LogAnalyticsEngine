@@ -43,7 +43,7 @@ The subset command in the utility script is intended for development tests only.
 | MongoDB  | Implemented |
 | Pig      | Implemented with Dockerized Pig script |
 | MapReduce| Implemented with explicit local MapReduce-style Java jobs |
-| Hive     | HiveQL script in `app/hive/etl.hql`; CLI uses the common local adapter when Hive is not installed |
+| Hive     | Implemented with Dockerized Hive running `app/hive/etl.hql` |
 
 ## Query Set
 
@@ -70,6 +70,14 @@ jdbc:
   url: jdbc:postgresql://localhost:5432/etl_results
   user: etl
   password: secret
+
+pig:
+  image: multietl-pig:latest
+  script: app/pig/etl.pig
+
+hive:
+  image: multietl-hive:latest
+  script: app/hive/etl.hql
 ```
 
 ## End-to-End Workflow

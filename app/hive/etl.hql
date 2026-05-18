@@ -33,9 +33,48 @@ SELECT
   '${hiveconf:RUN_ID}' AS run_id,
   record_seq,
   host,
-  CASE WHEN valid = 1 AND ts_epoch IS NOT NULL AND bytes_ok <> '' THEN FROM_UNIXTIME(ts_epoch, 'yyyy-MM-dd') ELSE NULL END AS log_date,
-  CASE WHEN valid = 1 AND ts_epoch IS NOT NULL AND bytes_ok <> '' THEN FROM_UNIXTIME(ts_epoch, 'yyyy-MM') ELSE NULL END AS log_month,
-  CASE WHEN valid = 1 AND ts_epoch IS NOT NULL AND bytes_ok <> '' THEN CAST(FROM_UNIXTIME(ts_epoch, 'HH') AS INT) ELSE NULL END AS log_hour,
+  CASE
+    WHEN valid = 1 AND ts_epoch IS NOT NULL AND bytes_ok <> '' THEN CONCAT(
+      SUBSTR(ts, 8, 4), '-',
+      CASE LOWER(SUBSTR(ts, 4, 3))
+        WHEN 'jan' THEN '01'
+        WHEN 'feb' THEN '02'
+        WHEN 'mar' THEN '03'
+        WHEN 'apr' THEN '04'
+        WHEN 'may' THEN '05'
+        WHEN 'jun' THEN '06'
+        WHEN 'jul' THEN '07'
+        WHEN 'aug' THEN '08'
+        WHEN 'sep' THEN '09'
+        WHEN 'oct' THEN '10'
+        WHEN 'nov' THEN '11'
+        WHEN 'dec' THEN '12'
+      END,
+      '-', SUBSTR(ts, 1, 2)
+    )
+    ELSE NULL
+  END AS log_date,
+  CASE
+    WHEN valid = 1 AND ts_epoch IS NOT NULL AND bytes_ok <> '' THEN CONCAT(
+      SUBSTR(ts, 8, 4), '-',
+      CASE LOWER(SUBSTR(ts, 4, 3))
+        WHEN 'jan' THEN '01'
+        WHEN 'feb' THEN '02'
+        WHEN 'mar' THEN '03'
+        WHEN 'apr' THEN '04'
+        WHEN 'may' THEN '05'
+        WHEN 'jun' THEN '06'
+        WHEN 'jul' THEN '07'
+        WHEN 'aug' THEN '08'
+        WHEN 'sep' THEN '09'
+        WHEN 'oct' THEN '10'
+        WHEN 'nov' THEN '11'
+        WHEN 'dec' THEN '12'
+      END
+    )
+    ELSE NULL
+  END AS log_month,
+  CASE WHEN valid = 1 AND ts_epoch IS NOT NULL AND bytes_ok <> '' THEN CAST(SUBSTR(ts, 13, 2) AS INT) ELSE NULL END AS log_hour,
   method,
   resource_path,
   protocol,
@@ -51,16 +90,16 @@ FROM (
   SELECT
     ROW_NUMBER() OVER (ORDER BY INPUT__FILE__NAME, BLOCK__OFFSET__INSIDE__FILE) AS record_seq,
     line,
-    CASE WHEN line RLIKE '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+)(?: (\\S+))?" (\\d{3}) (\\S+)' THEN 1 ELSE 0 END AS valid,
-    REGEXP_EXTRACT(line, '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+)(?: (\\S+))?" (\\d{3}) (\\S+)', 1) AS host,
-    REGEXP_EXTRACT(line, '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+)(?: (\\S+))?" (\\d{3}) (\\S+)', 2) AS ts,
-    REGEXP_EXTRACT(line, '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+)(?: (\\S+))?" (\\d{3}) (\\S+)', 3) AS method,
-    REGEXP_EXTRACT(line, '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+)(?: (\\S+))?" (\\d{3}) (\\S+)', 4) AS resource_path,
-    REGEXP_EXTRACT(line, '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+)(?: (\\S+))?" (\\d{3}) (\\S+)', 5) AS protocol,
-    REGEXP_EXTRACT(line, '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+)(?: (\\S+))?" (\\d{3}) (\\S+)', 6) AS status_str,
-    REGEXP_EXTRACT(line, '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+)(?: (\\S+))?" (\\d{3}) (\\S+)', 7) AS bytes_str,
-    REGEXP_EXTRACT(REGEXP_EXTRACT(line, '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+)(?: (\\S+))?" (\\d{3}) (\\S+)', 7), '^(\\d+|-)$', 1) AS bytes_ok,
-    UNIX_TIMESTAMP(REGEXP_EXTRACT(line, '^(\\S+) \\S+ \\S+ \\[(\\S+\\s-\\d{4})\\] "(\\S+) (\\S+)(?: (\\S+))?" (\\d{3}) (\\S+)', 2), 'dd/MMM/yyyy:HH:mm:ss Z') AS ts_epoch
+    CASE WHEN line RLIKE '^(\\S+)\\s+\\S+\\s+\\S+\\s+\\[(\\S+\\s-\\d{4})\\]\\s+"(\\S+)\\s+(\\S+)(?:\\s+(\\S+))?.*"\\s+(\\d{3})\\s+(\\S+)' THEN 1 ELSE 0 END AS valid,
+    REGEXP_EXTRACT(line, '^(\\S+)\\s+\\S+\\s+\\S+\\s+\\[(\\S+\\s-\\d{4})\\]\\s+"(\\S+)\\s+(\\S+)(?:\\s+(\\S+))?.*"\\s+(\\d{3})\\s+(\\S+)', 1) AS host,
+    REGEXP_EXTRACT(line, '^(\\S+)\\s+\\S+\\s+\\S+\\s+\\[(\\S+\\s-\\d{4})\\]\\s+"(\\S+)\\s+(\\S+)(?:\\s+(\\S+))?.*"\\s+(\\d{3})\\s+(\\S+)', 2) AS ts,
+    REGEXP_EXTRACT(line, '^(\\S+)\\s+\\S+\\s+\\S+\\s+\\[(\\S+\\s-\\d{4})\\]\\s+"(\\S+)\\s+(\\S+)(?:\\s+(\\S+))?.*"\\s+(\\d{3})\\s+(\\S+)', 3) AS method,
+    REGEXP_EXTRACT(line, '^(\\S+)\\s+\\S+\\s+\\S+\\s+\\[(\\S+\\s-\\d{4})\\]\\s+"(\\S+)\\s+(\\S+)(?:\\s+(\\S+))?.*"\\s+(\\d{3})\\s+(\\S+)', 4) AS resource_path,
+    REGEXP_EXTRACT(line, '^(\\S+)\\s+\\S+\\s+\\S+\\s+\\[(\\S+\\s-\\d{4})\\]\\s+"(\\S+)\\s+(\\S+)(?:\\s+(\\S+))?.*"\\s+(\\d{3})\\s+(\\S+)', 5) AS protocol,
+    REGEXP_EXTRACT(line, '^(\\S+)\\s+\\S+\\s+\\S+\\s+\\[(\\S+\\s-\\d{4})\\]\\s+"(\\S+)\\s+(\\S+)(?:\\s+(\\S+))?.*"\\s+(\\d{3})\\s+(\\S+)', 6) AS status_str,
+    REGEXP_EXTRACT(line, '^(\\S+)\\s+\\S+\\s+\\S+\\s+\\[(\\S+\\s-\\d{4})\\]\\s+"(\\S+)\\s+(\\S+)(?:\\s+(\\S+))?.*"\\s+(\\d{3})\\s+(\\S+)', 7) AS bytes_str,
+    REGEXP_EXTRACT(REGEXP_EXTRACT(line, '^(\\S+)\\s+\\S+\\s+\\S+\\s+\\[(\\S+\\s-\\d{4})\\]\\s+"(\\S+)\\s+(\\S+)(?:\\s+(\\S+))?.*"\\s+(\\d{3})\\s+(\\S+)', 7), '^(\\d+|-)$', 1) AS bytes_ok,
+    UNIX_TIMESTAMP(REGEXP_EXTRACT(line, '^(\\S+)\\s+\\S+\\s+\\S+\\s+\\[(\\S+\\s-\\d{4})\\]\\s+"(\\S+)\\s+(\\S+)(?:\\s+(\\S+))?.*"\\s+(\\d{3})\\s+(\\S+)', 2), 'dd/MMM/yyyy:HH:mm:ss Z') AS ts_epoch
   FROM raw_logs_stage
 ) parsed;
 

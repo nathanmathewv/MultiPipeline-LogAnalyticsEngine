@@ -19,4 +19,5 @@ pig:
   script: app/pig/etl.pig
 
 hive:
+  image: multietl-hive:latest
   script: app/hive/etl.hql
