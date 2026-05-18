@@ -1,5 +1,6 @@
 app:
   data_dir: data/raw
+  batch_mode: days
   batch_size: 1000
   ingest_chunk_size: 10000
   batch_size_days: 1
@@ -16,3 +17,6 @@ jdbc:
 pig:
   image: multietl-pig:latest
   script: app/pig/etl.pig
+
+hive:
+  script: app/hive/etl.hql

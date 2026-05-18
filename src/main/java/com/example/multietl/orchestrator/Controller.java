@@ -2,6 +2,7 @@ package com.example.multietl.orchestrator;
 
 import com.example.multietl.loader.DbLoader;
 import com.example.multietl.pipelines.Strategy.PipelineFactory;
+import com.example.multietl.pipelines.base.BatchConfig;
 import com.example.multietl.pipelines.base.Pipeline;
 import com.example.multietl.pipelines.base.QueryPlan;
 import com.example.multietl.config.AppConfig;
@@ -30,12 +31,12 @@ public class Controller {
     public Map<String, Object> run(String pipelineName,
                                   List<Path> inputFiles,
                                   int ingestChunkSize,
-                                  int batchSizeDays,
+                                  BatchConfig batchConfig,
                                   QueryPlan queryPlan,
                                   java.util.function.Consumer<Map<String, Object>> metricsCallback) throws Exception {
         String runId = UUID.randomUUID().toString();
         Pipeline pipeline = PipelineFactory.create(pipelineName, config);
-        pipeline.startRun(runId, batchSizeDays);
+        pipeline.startRun(runId, batchConfig);
 
         Instant start = Instant.now();
         int[] chunkIdRef = {1};
@@ -60,8 +61,8 @@ public class Controller {
         double avgBatchSize = totalBatches == 0 ? 0.0 : ((double) totalRecords) / totalBatches;
 
         // persist metadata and results
-        dbLoader.insertRunMetadata(runId, pipelineName, batchSizeDays, avgBatchSize, totalRecords, malformed, totalBatches, runtimeMs);
-        dbLoader.insertBatchMetadata(runId, pipelineName, batchSizeDays, pipeline.getBatchSummaries());
+        dbLoader.insertRunMetadata(runId, pipelineName, batchConfig, avgBatchSize, totalRecords, malformed, totalBatches, runtimeMs);
+        dbLoader.insertBatchMetadata(runId, pipelineName, batchConfig, pipeline.getBatchSummaries());
         dbLoader.insertMalformedSummary(runId, pipelineName, totalRecords, malformed);
         dbLoader.insertEtlResults(runId, pipelineName, results);
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a Java-based ETL and reporting framework for web server log analytics. It supports multiple execution backends through a unified interface. The current implementation provides a full MongoDB pipeline and scaffolds for Pig, MapReduce, and Hive.
+This project is a Java-based ETL and reporting framework for web server log analytics. It supports MongoDB, Pig, MapReduce, and Hive execution backends through one CLI/API interface and one relational reporting layer.
 
 ## Requirements
 
@@ -18,15 +18,21 @@ The project uses the NASA HTTP Web Server Logs from the Internet Traffic Archive
 - https://ita.ee.lbl.gov/traces/NASA_access_log_Jul95.gz
 - https://ita.ee.lbl.gov/traces/NASA_access_log_Aug95.gz
 
-Place the decompressed files in `data/raw/`. Large dataset files are ignored by Git.
+Place the official raw files in `data/raw/`. Both compressed `.gz` and decompressed files are supported; no manual preprocessing is required.
 
 ```bash
 mkdir -p data/raw
-cp /path/to/NASA_access_log_Jul95 data/raw/
-cp /path/to/NASA_access_log_Aug95 data/raw/
+cp /path/to/NASA_access_log_Jul95.gz data/raw/
+cp /path/to/NASA_access_log_Aug95.gz data/raw/
 ```
 
-Use only the official raw log files. Decompression is allowed, but no other preprocessing should be done outside the pipeline.
+On Windows, you can copy the two files from Downloads with:
+
+```powershell
+.\scripts\load-dataset.ps1
+```
+
+Use only the official raw log files. Decompression is allowed, but is no longer necessary; no other preprocessing should be done outside the pipeline.
 
 The subset command in the utility script is intended for development tests only. For official runs and comparisons, use the full official datasets without any manual preprocessing.
 
@@ -35,9 +41,9 @@ The subset command in the utility script is intended for development tests only.
 | Pipeline | Status |
 |----------|--------|
 | MongoDB  | Implemented |
-| Pig      | Scaffold only |
-| MapReduce| Scaffold only |
-| Hive     | Scaffold only |
+| Pig      | Implemented with Dockerized Pig script |
+| MapReduce| Implemented with explicit local MapReduce-style Java jobs |
+| Hive     | HiveQL script in `app/hive/etl.hql`; CLI uses the common local adapter when Hive is not installed |
 
 ## Query Set
 
@@ -52,7 +58,9 @@ Edit [app/config/config.yaml](app/config/config.yaml):
 ```yaml
 app:
   data_dir: data/raw
+  batch_mode: days
   batch_size: 1000
+  batch_size_days: 1
 
 mongodb:
   uri: mongodb://localhost:27017
@@ -73,10 +81,8 @@ jdbc:
    ```
 
 2. Place the dataset in `data/raw/`:
-   ```bash
-   mkdir -p data/raw
-   cp /path/to/NASA_access_log_Jul95 data/raw/
-   cp /path/to/NASA_access_log_Aug95 data/raw/
+   ```powershell
+   .\scripts\load-dataset.ps1
    ```
 
 3. Build the project:
@@ -104,7 +110,8 @@ jdbc:
    curl -X POST "http://localhost:8080/api/etl/run" \
      -G \
      --data-urlencode "pipeline=mongodb" \
-     --data-urlencode "file=NASA_access_log_Jul95" \
+     --data-urlencode "file=NASA_access_log_Jul95.gz" \
+     --data-urlencode "batchMode=records" \
      --data-urlencode "batchSize=50000"
    ```
 
@@ -126,10 +133,12 @@ jdbc:
 - `POST /api/etl/run` - Submit a job (async)
 - `GET /api/etl/status/{jobId}` - Get job status
 
-## CLI Mode (Legacy)
+## CLI Mode
 
 ```bash
-java -cp target/classes:target/lib/* com.example.multietl.cli.Main mongodb data/raw/sample.log 5
+java -cp "target/classes;target/dependency/*" com.example.multietl.cli.Main
+java -cp "target/classes;target/dependency/*" com.example.multietl.cli.Main mongodb data/raw/sample.log days 2
+java -cp "target/classes;target/dependency/*" com.example.multietl.cli.Main mongodb data/raw/sample.log records 50000
 ```
 
 ## Testing

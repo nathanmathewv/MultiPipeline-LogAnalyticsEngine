@@ -1,6 +1,7 @@
 package com.example.multietl.pipelines.pig;
 
 import com.example.multietl.config.AppConfig;
+import com.example.multietl.pipelines.base.BatchConfig;
 import com.example.multietl.pipelines.base.Pipeline;
 import com.example.multietl.pipelines.base.QueryPlan;
 import com.example.multietl.pipelines.base.QueryType;
@@ -12,10 +13,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -27,7 +26,7 @@ import java.util.stream.Collectors;
 public class PigPipeline implements Pipeline {
     private final AppConfig config;
     private String runId;
-    private int batchSizeDays = 1;
+    private BatchConfig batchConfig = BatchConfig.days(1);
     private long rawLoaded = 0;
     private int ingestChunks = 0;
     private long processed = 0;
@@ -35,7 +34,8 @@ public class PigPipeline implements Pipeline {
     private Path runDir;
     private Path inputDir;
     private Path outputDir;
-    private final Map<String, long[]> dateStats = new HashMap<>();
+    private final Map<Integer, long[]> batchStats = new LinkedHashMap<>();
+    private final Map<Integer, String[]> batchDateRanges = new LinkedHashMap<>();
     private List<Map<String, Object>> batchSummaries = new ArrayList<>();
 
     public PigPipeline() {
@@ -47,9 +47,16 @@ public class PigPipeline implements Pipeline {
     }
 
     @Override
-    public void startRun(String runId, int batchSizeDays) {
+    public void startRun(String runId, BatchConfig batchConfig) {
         this.runId = runId;
-        this.batchSizeDays = Math.max(1, batchSizeDays);
+        this.batchConfig = batchConfig == null ? BatchConfig.days(1) : batchConfig;
+        this.rawLoaded = 0;
+        this.ingestChunks = 0;
+        this.processed = 0;
+        this.malformed = 0;
+        this.batchStats.clear();
+        this.batchDateRanges.clear();
+        this.batchSummaries = new ArrayList<>();
         this.runDir = Path.of("results", "pig", "run_" + runId);
         this.inputDir = runDir.resolve("input");
         this.outputDir = runDir.resolve("output");
@@ -78,10 +85,11 @@ public class PigPipeline implements Pipeline {
         runPigJob();
 
         Map<String, List<Map<String, Object>>> results = new LinkedHashMap<>();
-        List<Map<String, Object>> q1Rows = readQueryRows("q1", 4);
-        List<Map<String, Object>> q2Rows = readQueryRows("q2", 5);
-        List<Map<String, Object>> q3Rows = readQueryRows("q3", 6);
-        loadDateCounts();
+        List<Map<String, Object>> q1Rows = readQueryRows("q1", 5);
+        List<Map<String, Object>> q2Rows = readQueryRows("q2", 6);
+        List<Map<String, Object>> q3Rows = readQueryRows("q3", 7);
+        loadBatchStats();
+        loadBatchDateRanges();
         loadMalformedSummary();
 
         batchSummaries = buildBatchSummaries();
@@ -113,7 +121,8 @@ public class PigPipeline implements Pipeline {
 
     @Override
     public void shutdown() {
-        dateStats.clear();
+        batchStats.clear();
+        batchDateRanges.clear();
         batchSummaries = new ArrayList<>();
     }
 
@@ -124,6 +133,8 @@ public class PigPipeline implements Pipeline {
         m.put("malformed", malformed);
         m.put("total_records", processed + malformed);
         m.put("total_batches", batchSummaries.size());
+        m.put("batch_mode", batchConfig.getModeKey());
+        m.put("batch_size", batchConfig.getSize());
         m.put("raw_loaded", rawLoaded);
         m.put("ingest_chunks", ingestChunks);
         return m;
@@ -159,10 +170,10 @@ public class PigPipeline implements Pipeline {
 
     private void runPigJob() throws Exception {
         String image = getPigImage();
-        String scriptPath = getPigScriptPath();
+        String scriptPath = normalizeContainerPath(getPigScriptPath());
         String workspace = Path.of("").toAbsolutePath().toString();
-        String inputGlob = inputDir.toString() + "/*.log";
-        String outputPath = outputDir.toString();
+        String inputGlob = normalizeContainerPath(inputDir.toString()) + "/*.log";
+        String outputPath = normalizeContainerPath(outputDir.toString());
 
         List<String> cmd = new ArrayList<>();
         cmd.add("docker");
@@ -183,7 +194,9 @@ public class PigPipeline implements Pipeline {
         cmd.add("-param");
         cmd.add("OUTPUT=/workspace/" + outputPath);
         cmd.add("-param");
-        cmd.add("BATCH_SIZE_DAYS=" + batchSizeDays);
+        cmd.add("BATCH_MODE=" + batchConfig.getModeKey());
+        cmd.add("-param");
+        cmd.add("BATCH_SIZE=" + batchConfig.getSize());
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.inheritIO();
@@ -223,28 +236,30 @@ public class PigPipeline implements Pipeline {
 
     private Map<String, Object> buildRow(String folder, String[] parts) {
         Map<String, Object> row = new LinkedHashMap<>();
-        row.put("batch_id", 0);
         switch (folder) {
             case "q1":
-                row.put("log_date", parts[0]);
-                row.put("status_code", Integer.parseInt(parts[1]));
-                row.put("request_count", Long.parseLong(parts[2]));
-                row.put("total_bytes", Double.parseDouble(parts[3]));
+                row.put("batch_id", Integer.parseInt(parts[0]));
+                row.put("log_date", parts[1]);
+                row.put("status_code", Integer.parseInt(parts[2]));
+                row.put("request_count", Long.parseLong(parts[3]));
+                row.put("total_bytes", Double.parseDouble(parts[4]));
                 break;
             case "q2":
-                row.put("log_month", parts[0]);
-                row.put("resource_path", parts[1]);
-                row.put("request_count", Long.parseLong(parts[2]));
-                row.put("total_bytes", Double.parseDouble(parts[3]));
-                row.put("distinct_host_count", Long.parseLong(parts[4]));
+                row.put("batch_id", Integer.parseInt(parts[0]));
+                row.put("log_month", parts[1]);
+                row.put("resource_path", parts[2]);
+                row.put("request_count", Long.parseLong(parts[3]));
+                row.put("total_bytes", Double.parseDouble(parts[4]));
+                row.put("distinct_host_count", Long.parseLong(parts[5]));
                 break;
             case "q3":
-                row.put("log_date", parts[0]);
-                row.put("log_hour", Integer.parseInt(parts[1]));
-                row.put("error_request_count", Long.parseLong(parts[2]));
-                row.put("total_request_count", Long.parseLong(parts[3]));
-                row.put("error_rate", Double.parseDouble(parts[4]));
-                row.put("distinct_error_hosts", Long.parseLong(parts[5]));
+                row.put("batch_id", Integer.parseInt(parts[0]));
+                row.put("log_date", parts[1]);
+                row.put("log_hour", Integer.parseInt(parts[2]));
+                row.put("error_request_count", Long.parseLong(parts[3]));
+                row.put("total_request_count", Long.parseLong(parts[4]));
+                row.put("error_rate", Double.parseDouble(parts[5]));
+                row.put("distinct_error_hosts", Long.parseLong(parts[6]));
                 break;
             default:
                 break;
@@ -252,8 +267,8 @@ public class PigPipeline implements Pipeline {
         return row;
     }
 
-    private void loadDateCounts() throws Exception {
-        Path dir = outputDir.resolve("date_counts");
+    private void loadBatchStats() throws Exception {
+        Path dir = outputDir.resolve("batch_counts");
         if (!dir.toFile().exists()) {
             return;
         }
@@ -271,10 +286,43 @@ public class PigPipeline implements Pipeline {
                     if (parts.length < 3) {
                         continue;
                     }
-                    String logDate = parts[0];
+                    int batchId = Integer.parseInt(parts[0]);
                     long total = Long.parseLong(parts[1]);
                     long malformedCount = Long.parseLong(parts[2]);
-                    dateStats.put(logDate, new long[] {total, malformedCount});
+                    batchStats.put(batchId, new long[] {total, malformedCount});
+                }
+            }
+        }
+    }
+
+    private void loadBatchDateRanges() throws Exception {
+        Path dir = outputDir.resolve("batch_date_counts");
+        if (!dir.toFile().exists()) {
+            return;
+        }
+        List<Path> partFiles = Files.list(dir)
+            .filter(p -> p.getFileName().toString().startsWith("part-"))
+            .collect(Collectors.toList());
+        for (Path file : partFiles) {
+            try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.isBlank()) {
+                        continue;
+                    }
+                    String[] parts = line.split("\t", -1);
+                    if (parts.length < 2 || parts[1].isBlank()) {
+                        continue;
+                    }
+                    int batchId = Integer.parseInt(parts[0]);
+                    String logDate = parts[1];
+                    String[] range = batchDateRanges.computeIfAbsent(batchId, id -> new String[] {null, null});
+                    if (range[0] == null || logDate.compareTo(range[0]) < 0) {
+                        range[0] = logDate;
+                    }
+                    if (range[1] == null || logDate.compareTo(range[1]) > 0) {
+                        range[1] = logDate;
+                    }
                 }
             }
         }
@@ -310,28 +358,28 @@ public class PigPipeline implements Pipeline {
     }
 
     private List<Map<String, Object>> buildBatchSummaries() {
-        List<String> dates = new ArrayList<>(dateStats.keySet());
-        Collections.sort(dates);
         Map<Integer, Map<String, Object>> summaries = new LinkedHashMap<>();
-        for (int i = 0; i < dates.size(); i++) {
-            String date = dates.get(i);
-            int batchId = (i / batchSizeDays) + 1;
-            Map<String, Object> summary = summaries.computeIfAbsent(batchId, id -> {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("batch_id", id);
-                m.put("batch_start_date", date);
-                m.put("batch_end_date", date);
-                m.put("batch_size_days", batchSizeDays);
-                m.put("records_total", 0L);
-                m.put("malformed_records", 0L);
-                return m;
-            });
-            summary.put("batch_end_date", date);
-            long[] stats = dateStats.getOrDefault(date, new long[] {0L, 0L});
-            summary.put("records_total", (Long) summary.get("records_total") + stats[0]);
-            summary.put("malformed_records", (Long) summary.get("malformed_records") + stats[1]);
+        for (Map.Entry<Integer, long[]> entry : batchStats.entrySet()) {
+            int batchId = entry.getKey();
+            long[] stats = entry.getValue();
+            String[] range = batchDateRanges.getOrDefault(batchId, new String[] {null, null});
+            Map<String, Object> summary = new LinkedHashMap<>();
+            summary.put("batch_id", batchId);
+            summary.put("batch_start_date", range[0]);
+            summary.put("batch_end_date", range[1]);
+            putBatchConfig(summary);
+            summary.put("records_total", stats[0]);
+            summary.put("malformed_records", stats[1]);
+            summaries.put(batchId, summary);
         }
         return new ArrayList<>(summaries.values());
+    }
+
+    private void putBatchConfig(Map<String, Object> m) {
+        m.put("batch_mode", batchConfig.getModeKey());
+        m.put("batch_size", batchConfig.getSize());
+        m.put("batch_size_days", batchConfig.getBatchSizeDays());
+        m.put("batch_size_records", batchConfig.getBatchSizeRecords());
     }
 
     private void addScopedByMonth(Map<String, List<Map<String, Object>>> results,
@@ -367,6 +415,10 @@ public class PigPipeline implements Pipeline {
 
     private String getPigScriptPath() {
         return config != null ? config.getPigScriptPath() : "app/pig/etl.pig";
+    }
+
+    private String normalizeContainerPath(String path) {
+        return path.replace('\\', '/');
     }
 
     private void clearDirectory(Path dir) throws Exception {

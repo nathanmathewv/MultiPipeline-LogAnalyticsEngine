@@ -1,6 +1,7 @@
 @baseUrl = http://localhost:8080
 @pipeline = mongodb
 @file = sample.log
+@batchMode = records
 @batchSize = 5
 
 ### List dataset files
@@ -19,7 +20,7 @@ client.test("stats is array", () => client.assert(Array.isArray(response.body.st
 
 ### Submit a job
 # @name submitJob
-POST {{baseUrl}}/api/etl/run?pipeline={{pipeline}}&file={{file}}&batchSize={{batchSize}}
+POST {{baseUrl}}/api/etl/run?pipeline={{pipeline}}&file={{file}}&batchMode={{batchMode}}&batchSize={{batchSize}}
 > {%
 client.test("status is 200", () => client.assert(response.status === 200));
 client.test("jobId present", () => client.assert(!!response.body.jobId));
@@ -34,7 +35,7 @@ client.test("job status present", () => client.assert(!!response.body.status));
 %}
 
 ### Submit invalid job (expected 400)
-POST {{baseUrl}}/api/etl/run?pipeline={{pipeline}}&file=missing.log&batchSize={{batchSize}}
+POST {{baseUrl}}/api/etl/run?pipeline={{pipeline}}&file=missing.log&batchMode={{batchMode}}&batchSize={{batchSize}}
 > {%
 client.test("status is 400", () => client.assert(response.status === 400));
 client.test("error present", () => client.assert(!!response.body.error));

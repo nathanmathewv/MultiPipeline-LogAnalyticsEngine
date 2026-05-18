@@ -4,10 +4,10 @@ import java.util.List;
 import java.util.Map;
 
 public interface Pipeline {
-    void startRun(String runId, int batchSizeDays);
+    void startRun(String runId, BatchConfig batchConfig);
 
     /**
-     * Process a chunk of raw log lines. chunkId starts at 1.
+     * Process an ingest chunk of raw log lines. chunkId starts at 1.
      */
     void processBatch(List<String> rawLines, int chunkId) throws Exception;
 

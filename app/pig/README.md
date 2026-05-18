@@ -16,7 +16,8 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
   pig -x local -f /workspace/app/pig/etl.pig \
   -param INPUT=/workspace/data/raw/NASA_access_log_Jul95 \
   -param OUTPUT=/workspace/results/pig/manual_test \
-  -param BATCH_SIZE_DAYS=1
+  -param BATCH_MODE=days \
+  -param BATCH_SIZE=1
 ```
 
 Outputs go to `results/pig/<run_id>/output` when invoked via the Java CLI.

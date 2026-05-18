@@ -2,6 +2,7 @@ package com.example.multietl.pipelines.common;
 
 import com.example.multietl.parser.LogParser;
 import com.example.multietl.parser.LogRecord;
+import com.example.multietl.pipelines.base.BatchConfig;
 import com.example.multietl.pipelines.base.Pipeline;
 import com.example.multietl.pipelines.base.QueryPlan;
 import com.example.multietl.pipelines.base.QueryType;
@@ -12,7 +13,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Common in-memory pipeline implementation used by Pig, MapReduce, Hive, and other non-MongoDB backends.
+ * Common in-memory pipeline implementation used by the local Hive adapter and other non-MongoDB backends.
  * Handles log parsing, aggregation, and query computation in memory.
  */
 public class CommonPipeline implements Pipeline {
@@ -23,18 +24,28 @@ public class CommonPipeline implements Pipeline {
     private long malformedCount = 0;
     private long processed = 0;
     private long rawLoaded = 0;
+    private long recordSequence = 0;
     private int ingestChunks = 0;
-    private int batchSizeDays = 1;
+    private BatchConfig batchConfig = BatchConfig.days(1);
     private final List<String> rawLines = new ArrayList<>();
-    private final List<LogRecord> allRecords = new ArrayList<>();
+    private final List<BatchRecord> allRecords = new ArrayList<>();
     private final Map<String, long[]> dateStats = new HashMap<>();
     private List<Map<String, Object>> batchSummaries = new ArrayList<>();
 
     @Override
-    public void startRun(String runId, int batchSizeDays) {
+    public void startRun(String runId, BatchConfig batchConfig) {
         this.runId = runId;
-        this.batchSizeDays = Math.max(1, batchSizeDays);
-        logger.info("CommonPipeline started run {} with batchSizeDays={}", runId, this.batchSizeDays);
+        this.batchConfig = batchConfig == null ? BatchConfig.days(1) : batchConfig;
+        malformedCount = 0;
+        processed = 0;
+        rawLoaded = 0;
+        recordSequence = 0;
+        ingestChunks = 0;
+        rawLines.clear();
+        allRecords.clear();
+        dateStats.clear();
+        batchSummaries = new ArrayList<>();
+        logger.info("CommonPipeline started run {} with batchConfig={}", runId, this.batchConfig.describe());
     }
 
     @Override
@@ -48,7 +59,9 @@ public class CommonPipeline implements Pipeline {
 
         for (String line : rawLines) {
             LogParser.ParseResult r = parser.parse(line);
-            allRecords.add(r.record);
+            long currentSequence = ++recordSequence;
+            int batchId = batchConfig.isRecords() ? batchIdForRecord(currentSequence) : 0;
+            allRecords.add(new BatchRecord(r.record, batchId, currentSequence));
             if (!r.success) {
                 malformedCount++;
                 batchMalformed++;
@@ -71,19 +84,22 @@ public class CommonPipeline implements Pipeline {
     @Override
     public Map<String, List<Map<String, Object>>> finalizeRun(QueryPlan plan) throws Exception {
         Map<String, List<Map<String, Object>>> results = new LinkedHashMap<>();
+        if (batchConfig.isDays()) {
+            assignDayBatchIds();
+        }
 
         // Filter out malformed records for aggregations
-        List<LogRecord> goodRecords = allRecords.stream()
-            .filter(r -> !r.isMalformed())
+        List<BatchRecord> goodRecords = allRecords.stream()
+            .filter(r -> !r.record.isMalformed())
             .collect(Collectors.toList());
 
         batchSummaries = buildBatchSummaries();
 
         if (plan.isSplitByMonth()) {
-            Map<String, List<LogRecord>> byMonth = groupByMonth(goodRecords);
-            for (Map.Entry<String, List<LogRecord>> entry : byMonth.entrySet()) {
+            Map<String, List<BatchRecord>> byMonth = groupByMonth(goodRecords);
+            for (Map.Entry<String, List<BatchRecord>> entry : byMonth.entrySet()) {
                 String month = entry.getKey();
-                List<LogRecord> monthRecords = entry.getValue();
+                List<BatchRecord> monthRecords = entry.getValue();
                 if (plan.getQueries().contains(QueryType.DAILY_TRAFFIC_SUMMARY)) {
                     results.put(scopedKey(QueryType.DAILY_TRAFFIC_SUMMARY, month), computeQuery1(monthRecords));
                 }
@@ -112,14 +128,15 @@ public class CommonPipeline implements Pipeline {
     /**
      * Query 1: Group by log_date and status_code, count requests and sum bytes.
      */
-    private List<Map<String, Object>> computeQuery1(List<LogRecord> records) {
+    private List<Map<String, Object>> computeQuery1(List<BatchRecord> records) {
         Map<String, Map<String, Object>> agg = new LinkedHashMap<>();
-        
-        for (LogRecord r : records) {
-            String key = r.getLogDate() + "|" + r.getStatusCode();
+
+        for (BatchRecord br : records) {
+            LogRecord r = br.record;
+            String key = br.batchId + "|" + r.getLogDate() + "|" + r.getStatusCode();
             Map<String, Object> row = agg.computeIfAbsent(key, k -> {
                 Map<String, Object> m = new LinkedHashMap<>();
-                m.put("batch_id", 0);
+                m.put("batch_id", br.batchId);
                 m.put("log_date", r.getLogDate());
                 m.put("status_code", r.getStatusCode());
                 m.put("request_count", 0L);
@@ -136,14 +153,16 @@ public class CommonPipeline implements Pipeline {
     /**
      * Query 2: Group by resource_path, count requests, sum bytes, count distinct hosts, then sort by count desc and limit 20.
      */
-    private List<Map<String, Object>> computeQuery2(List<LogRecord> records) {
+    private List<Map<String, Object>> computeQuery2(List<BatchRecord> records) {
         Map<String, Map<String, Object>> agg = new LinkedHashMap<>();
-        
-        for (LogRecord r : records) {
+
+        for (BatchRecord br : records) {
+            LogRecord r = br.record;
             String resource = r.getResourcePath();
-            Map<String, Object> row = agg.computeIfAbsent(resource, k -> {
+            String key = br.batchId + "|" + resource;
+            Map<String, Object> row = agg.computeIfAbsent(key, k -> {
                 Map<String, Object> m = new LinkedHashMap<>();
-                m.put("batch_id", 0);
+                m.put("batch_id", br.batchId);
                 m.put("resource_path", resource);
                 m.put("request_count", 0L);
                 m.put("total_bytes", 0L);
@@ -157,30 +176,49 @@ public class CommonPipeline implements Pipeline {
             hosts.add(r.getHost());
         }
         
-        // Convert and limit to top 20
-        return agg.values().stream()
+        List<Map<String, Object>> rows = agg.values().stream()
             .map(row -> {
                 @SuppressWarnings("unchecked")
                 Set<String> hosts = (Set<String>) row.remove("distinct_hosts");
                 row.put("distinct_host_count", (long) hosts.size());
                 return row;
             })
-            .sorted((a, b) -> Long.compare((Long) b.get("request_count"), (Long) a.get("request_count")))
-            .limit(20)
+            .sorted((a, b) -> {
+                int batchA = ((Number) a.get("batch_id")).intValue();
+                int batchB = ((Number) b.get("batch_id")).intValue();
+                int batchCompare = Integer.compare(batchA, batchB);
+                if (batchCompare != 0) return batchCompare;
+                int countCompare = Long.compare((Long) b.get("request_count"), (Long) a.get("request_count"));
+                if (countCompare != 0) return countCompare;
+                return String.valueOf(a.get("resource_path")).compareTo(String.valueOf(b.get("resource_path")));
+            })
             .collect(Collectors.toList());
+
+        Map<Integer, Integer> rowsPerBatch = new HashMap<>();
+        List<Map<String, Object>> topRows = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            int batchId = ((Number) row.get("batch_id")).intValue();
+            int currentCount = rowsPerBatch.getOrDefault(batchId, 0);
+            if (currentCount < 20) {
+                topRows.add(row);
+                rowsPerBatch.put(batchId, currentCount + 1);
+            }
+        }
+        return topRows;
     }
 
     /**
      * Query 3: Group by log_date and log_hour, compute error metrics including distinct error hosts.
      */
-    private List<Map<String, Object>> computeQuery3(List<LogRecord> records) {
+    private List<Map<String, Object>> computeQuery3(List<BatchRecord> records) {
         Map<String, Map<String, Object>> agg = new LinkedHashMap<>();
-        
-        for (LogRecord r : records) {
-            String key = r.getLogDate() + "|" + r.getLogHour();
+
+        for (BatchRecord br : records) {
+            LogRecord r = br.record;
+            String key = br.batchId + "|" + r.getLogDate() + "|" + r.getLogHour();
             Map<String, Object> row = agg.computeIfAbsent(key, k -> {
                 Map<String, Object> m = new LinkedHashMap<>();
-                m.put("batch_id", 0);
+                m.put("batch_id", br.batchId);
                 m.put("log_date", r.getLogDate());
                 m.put("log_hour", r.getLogHour());
                 m.put("total_request_count", 0L);
@@ -215,6 +253,10 @@ public class CommonPipeline implements Pipeline {
                 return row;
             })
             .sorted((a, b) -> {
+                int batchA = ((Number) a.get("batch_id")).intValue();
+                int batchB = ((Number) b.get("batch_id")).intValue();
+                int batchCompare = Integer.compare(batchA, batchB);
+                if (batchCompare != 0) return batchCompare;
                 String dateA = (String) a.get("log_date");
                 String dateB = (String) b.get("log_date");
                 int dateCompare = dateA.compareTo(dateB);
@@ -241,6 +283,8 @@ public class CommonPipeline implements Pipeline {
         m.put("malformed", malformedCount);
         m.put("total_records", processed + malformedCount);
         m.put("total_batches", computeBatchCount());
+        m.put("batch_mode", batchConfig.getModeKey());
+        m.put("batch_size", batchConfig.getSize());
         m.put("raw_loaded", rawLoaded);
         m.put("ingest_chunks", ingestChunks);
         return m;
@@ -252,52 +296,114 @@ public class CommonPipeline implements Pipeline {
     }
 
     private int computeBatchCount() {
+        if (batchConfig.isRecords()) {
+            long totalRecords = processed + malformedCount;
+            return totalRecords == 0 ? 0 : (int) Math.ceil((double) totalRecords / batchConfig.getSize());
+        }
         int dateCount = dateStats.size();
         if (dateCount == 0) {
-            return 0;
+            return (processed + malformedCount) == 0 ? 0 : 1;
         }
-        return (int) Math.ceil((double) dateCount / batchSizeDays);
+        return (int) Math.ceil((double) dateCount / batchConfig.getSize());
     }
 
     private List<Map<String, Object>> buildBatchSummaries() {
-        List<String> dates = new ArrayList<>(dateStats.keySet());
-        Collections.sort(dates);
+        if (batchConfig.isRecords()) {
+            return buildRecordBatchSummaries();
+        }
+        return buildRecordBatchSummaries();
+    }
+
+    private List<Map<String, Object>> buildRecordBatchSummaries() {
         Map<Integer, Map<String, Object>> summaries = new LinkedHashMap<>();
-        for (int i = 0; i < dates.size(); i++) {
-            String date = dates.get(i);
-            int batchId = (i / batchSizeDays) + 1;
-            Map<String, Object> summary = summaries.computeIfAbsent(batchId, id -> {
+        for (BatchRecord br : allRecords) {
+            Map<String, Object> summary = summaries.computeIfAbsent(br.batchId, id -> {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("batch_id", id);
-                m.put("batch_start_date", date);
-                m.put("batch_end_date", date);
-                m.put("batch_size_days", batchSizeDays);
+                m.put("batch_start_date", null);
+                m.put("batch_end_date", null);
+                putBatchConfig(m);
                 m.put("records_total", 0L);
                 m.put("malformed_records", 0L);
                 return m;
             });
-            summary.put("batch_end_date", date);
-            long[] stats = dateStats.getOrDefault(date, new long[] {0L, 0L});
-            summary.put("records_total", (Long) summary.get("records_total") + stats[0]);
-            summary.put("malformed_records", (Long) summary.get("malformed_records") + stats[1]);
+            summary.put("records_total", (Long) summary.get("records_total") + 1);
+            if (br.record.isMalformed()) {
+                summary.put("malformed_records", (Long) summary.get("malformed_records") + 1);
+            }
+            String logDate = br.record.getLogDate();
+            if (logDate != null) {
+                Object start = summary.get("batch_start_date");
+                Object end = summary.get("batch_end_date");
+                if (start == null || logDate.compareTo((String) start) < 0) {
+                    summary.put("batch_start_date", logDate);
+                }
+                if (end == null || logDate.compareTo((String) end) > 0) {
+                    summary.put("batch_end_date", logDate);
+                }
+            }
         }
         return new ArrayList<>(summaries.values());
     }
 
-    private Map<String, List<LogRecord>> groupByMonth(List<LogRecord> records) {
-        Map<String, List<LogRecord>> byMonth = new LinkedHashMap<>();
-        for (LogRecord r : records) {
+    private void assignDayBatchIds() {
+        List<String> dates = new ArrayList<>(dateStats.keySet());
+        Collections.sort(dates);
+        Map<String, Integer> dateToBatch = new HashMap<>();
+        for (int i = 0; i < dates.size(); i++) {
+            dateToBatch.put(dates.get(i), (i / batchConfig.getSize()) + 1);
+        }
+        int fallbackBatchId = allRecords.isEmpty() ? 0 : 1;
+        int currentBatchId = fallbackBatchId;
+        for (BatchRecord br : allRecords) {
+            String logDate = br.record.getLogDate();
+            if (logDate != null) {
+                currentBatchId = dateToBatch.getOrDefault(logDate, currentBatchId);
+                br.batchId = currentBatchId;
+            } else {
+                br.batchId = currentBatchId;
+            }
+        }
+    }
+
+    private int batchIdForRecord(long sequence) {
+        return (int) (((sequence - 1) / batchConfig.getSize()) + 1);
+    }
+
+    private void putBatchConfig(Map<String, Object> m) {
+        m.put("batch_mode", batchConfig.getModeKey());
+        m.put("batch_size", batchConfig.getSize());
+        m.put("batch_size_days", batchConfig.getBatchSizeDays());
+        m.put("batch_size_records", batchConfig.getBatchSizeRecords());
+    }
+
+    private Map<String, List<BatchRecord>> groupByMonth(List<BatchRecord> records) {
+        Map<String, List<BatchRecord>> byMonth = new LinkedHashMap<>();
+        for (BatchRecord br : records) {
+            LogRecord r = br.record;
             String logDate = r.getLogDate();
             if (logDate == null || logDate.length() < 7) {
                 continue;
             }
             String month = logDate.substring(0, 7);
-            byMonth.computeIfAbsent(month, k -> new ArrayList<>()).add(r);
+            byMonth.computeIfAbsent(month, k -> new ArrayList<>()).add(br);
         }
         return byMonth;
     }
 
     private String scopedKey(QueryType type, String month) {
         return type.getKey() + "|month=" + month;
+    }
+
+    private static class BatchRecord {
+        private final LogRecord record;
+        private final long sequence;
+        private int batchId;
+
+        private BatchRecord(LogRecord record, int batchId, long sequence) {
+            this.record = record;
+            this.batchId = batchId;
+            this.sequence = sequence;
+        }
     }
 }

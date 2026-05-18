@@ -28,6 +28,16 @@ public class LogParserTest {
     }
 
     @Test
+    public void parsesRequestWithoutProtocol() {
+        String line = "199.72.81.55 - - [01/Jul/1995:00:00:01 -0400] \"GET /a\" 200 100";
+        LogParser parser = new LogParser();
+        LogParser.ParseResult r = parser.parse(line);
+        assertTrue(r.success);
+        assertEquals("/a", r.record.getResourcePath());
+        assertNull(r.record.getProtocol());
+    }
+
+    @Test
     public void reportsMalformed() {
         String bad = "this is not a log line";
         LogParser parser = new LogParser();

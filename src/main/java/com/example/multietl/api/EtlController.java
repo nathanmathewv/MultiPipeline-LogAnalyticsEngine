@@ -1,6 +1,7 @@
 package com.example.multietl.api;
 
 import com.example.multietl.service.EtlService;
+import com.example.multietl.util.DatasetFiles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,12 +29,17 @@ public class EtlController {
     public ResponseEntity<?> startJob(
             @RequestParam String pipeline,
             @RequestParam String file,
+            @RequestParam(required = false) String batchMode,
+            @RequestParam(required = false) Integer batchSize,
             @RequestParam(required = false) Integer batchDays) {
         try {
-            logger.info("Received ETL job request: pipeline={}, file={}, batchDays={}", pipeline, file, batchDays);
-            String jobId = etlService.submitJob(pipeline, file, batchDays);
+            var batchConfig = etlService.buildBatchConfig(batchMode, batchSize, batchDays);
+            logger.info("Received ETL job request: pipeline={}, file={}, batch={}", pipeline, file, batchConfig.describe());
+            String jobId = etlService.submitJob(pipeline, file, batchConfig);
             return ResponseEntity.ok(Map.of(
                     "jobId", jobId,
+                    "batchMode", batchConfig.getModeKey(),
+                    "batchSize", batchConfig.getSize(),
                     "message", "ETL job submitted successfully",
                     "status", "RUNNING"
             ));
@@ -62,8 +68,7 @@ public class EtlController {
                 return ResponseEntity.ok(Map.of("files", new String[0]));
             }
 
-            File[] files = dataDir.listFiles((d, name) -> 
-                    name.endsWith(".log") || name.endsWith(".gz"));
+            File[] files = dataDir.listFiles((d, name) -> DatasetFiles.isSupportedLogFile(name));
             
             List<Map<String, Object>> fileList = new ArrayList<>();
             if (files != null) {
@@ -92,12 +97,12 @@ public class EtlController {
                 return ResponseEntity.ok(Map.of("stats", new Object[0]));
             }
 
-            File[] files = dataDir.listFiles((d, name) -> name.endsWith(".log"));
+            File[] files = dataDir.listFiles((d, name) -> DatasetFiles.isSupportedLogFile(name));
             List<Map<String, Object>> stats = new ArrayList<>();
 
             if (files != null) {
                 for (File f : files) {
-                    long lines = countLines(f);
+                    long lines = DatasetFiles.countLines(f.toPath());
                     stats.add(Map.of(
                             "name", f.getName(),
                             "size", f.length(),
@@ -113,17 +118,6 @@ public class EtlController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", e.getMessage()));
         }
-    }
-
-    private long countLines(File file) throws Exception {
-        long count = 0;
-        try (java.util.Scanner scanner = new java.util.Scanner(file)) {
-            while (scanner.hasNextLine()) {
-                scanner.nextLine();
-                count++;
-            }
-        }
-        return count;
     }
 
     private String formatBytes(long bytes) {

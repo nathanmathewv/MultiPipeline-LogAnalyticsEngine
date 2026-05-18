@@ -1,15 +1,14 @@
 # NASA HTTP Web Server Logs Dataset
 
 This directory contains the NASA HTTP web server access logs used for ETL testing and analysis.
-Use only the official raw logs from the Internet Traffic Archive. Decompression is allowed, but do not preprocess the data outside the pipeline.
+Use only the official raw logs from the Internet Traffic Archive. Compressed `.gz` files are supported directly. Decompression is allowed, but do not preprocess the data outside the pipeline.
 
 ## File Placement
 
 Large dataset files are not included in the repository. Place the official logs in this directory:
 
-```bash
-cp ~/Downloads/NASA_access_log_Jul95 .
-cp ~/Downloads/NASA_access_log_Aug95 .
+```powershell
+..\..\scripts\load-dataset.ps1
 ```
 
 ## Files

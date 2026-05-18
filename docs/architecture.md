@@ -1,7 +1,7 @@
 # Architecture
 
 ## Overview
-The Multi-Pipeline ETL Framework is a modular Java-based system that allows executing the same ETL workflow using different pipeline implementations (MongoDB fully implemented, Pig/MapReduce/Hive as stubs). The architecture follows SOLID principles and uses enterprise design patterns.
+The Multi-Pipeline ETL Framework is a modular Java-based system that allows executing the same ETL workflow using MongoDB, Pig, MapReduce, and Hive pipeline implementations. The architecture follows SOLID principles and uses enterprise design patterns.
 
 ## Components
 
@@ -17,8 +17,8 @@ The Multi-Pipeline ETL Framework is a modular Java-based system that allows exec
 **Purpose**: Define a common interface for all pipeline implementations.
 
 - `Pipeline.java`: Interface specifying methods:
-  - `startRun(String runId)`: Initialize pipeline for a run
-  - `processBatch(List<String> rawLines, int batchId)`: Process a batch of raw logs
+  - `startRun(String runId, BatchConfig batchConfig)`: Initialize pipeline for a run with day or record batching
+  - `processBatch(List<String> rawLines, int chunkId)`: Process an ingest chunk of raw logs
   - `finalizeRun()`: Run aggregations and return results
   - `getMetrics()`: Expose run metrics (processed, malformed, total_batches)
   - `shutdown()`: Cleanup resources
@@ -43,19 +43,18 @@ The Multi-Pipeline ETL Framework is a modular Java-based system that allows exec
   - **Query 3**: Hourly Error Analysis (group by log_date, log_hour, compute error rates)
 
 #### Pig, MapReduce, Hive (`pig/`, `mapreduce/`, `hive/`)
-**Status**: Stubs with TODOs.
+**Status**: Implemented through their pipeline adapters.
 
-Each has detailed comments on:
-- How parsing would be done in each framework
-- How batching would be handled
-- How each query would be implemented
+- Pig executes parsing, batch assignment, malformed summaries, and the three aggregations through `app/pig/etl.pig`.
+- Hive has a matching HiveQL workflow in `app/hive/etl.hql` for Hive runtimes; the CLI keeps a local adapter for development machines without Hive installed.
+- MapReduce runs explicit local MapReduce-style jobs under `src/main/java/com/example/multietl/pipelines/mapreduce/jobs`.
 
 ### 4. Orchestrator (`app/orchestrator/`)
 **Purpose**: Control execution flow, manage batching, and coordinate persistence.
 
 - `Controller.java`: 
   - Generates run_id
-  - Loads data and splits into batches using BatchManager
+  - Streams input files to the selected pipeline in ingest chunks
   - Times execution
   - Calls pipeline methods in sequence
   - Computes avg_batch_size
@@ -73,7 +72,7 @@ Each has detailed comments on:
 
 - `DbLoader.java`:
   - JDBC-based loader using parameterized queries (prevents SQL injection)
-  - `insertRunMetadata`: Stores run_id, pipeline_name, batch_size, avg_batch_size, total_records, malformed_records, total_batches, runtime_ms
+  - `insertRunMetadata`: Stores run_id, pipeline_name, batch_mode, batch_size, mode-specific batch size, avg_batch_size, total_records, malformed_records, total_batches, runtime_ms
   - `insertEtlResults`: Stores query results with mapping k1 (first key), k2 (second key), m1-m4 (metrics)
   - `queryRunMetadata`, `queryEtlResults`: Fetch data for reporting
 
@@ -121,9 +120,10 @@ Each has detailed comments on:
 
 ## Batching Strategy
 
-- **Application-level batching**: Orchestrator splits file into chunks before passing to pipeline
-- **Batch ID assignment**: Starts at 1, increments per batch
-- **Batch persistence**: Each document in MongoDB (and hypothetically in Pig/MR/Hive) is tagged with run_id and batch_id
+- **Pipeline-level batching**: Orchestrator streams ingest chunks; each selected pipeline assigns analytical `batch_id` values.
+- **Day mode**: Unique log dates are sorted and grouped by the configured number of days.
+- **Record mode**: Raw records are assigned to consecutive batches by configured record count.
+- **Batch persistence**: Pipeline outputs and MongoDB documents are tagged with run_id and batch_id
 - **Compute avg_batch_size**: Total records / number of batches
 
 ## Query Semantics (Uniform Across All Pipelines)
@@ -162,7 +162,7 @@ GROUP BY log_date, log_hour
 ## Extensibility
 
 - **New pipelines**: Implement Pipeline interface, add to PipelineFactory
-- **New queries**: Add to MongoDB aggregation, stub in other pipelines
+- **New queries**: Add to the pipeline implementations and the shared reporting formatter
 - **Configuration**: Update config.yaml and AppConfig getters
 - **Reporting**: Add query-specific formatting in Reporter.formatRow()
 

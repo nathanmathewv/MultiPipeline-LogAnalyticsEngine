@@ -43,7 +43,8 @@ public class Reporter {
                 appendLine(sb, "Run ID:           " + rs.getString("run_id"));
                 appendLine(sb, "Pipeline:         " + rs.getString("pipeline_name"));
                 appendLine(sb, "Batch ID:         all");
-                appendLine(sb, "Batch size (days): " + rs.getInt("batch_size"));
+                appendLine(sb, "Batch mode:       " + rs.getString("batch_mode"));
+                appendLine(sb, "Batch size:       " + rs.getInt("batch_size"));
                 appendLine(sb, "Avg batch size:   " + String.format("%.2f", rs.getDouble("avg_batch_size")));
                 appendLine(sb, "Total records:    " + rs.getLong("total_records"));
                 appendLine(sb, "Malformed records: " + rs.getLong("malformed_records"));
@@ -66,13 +67,14 @@ public class Reporter {
             boolean any = false;
             while (rs.next()) {
                 any = true;
-                appendLine(sb, String.format("Batch %s: %s to %s | Records: %s | Malformed: %s | Days: %s",
+                appendLine(sb, String.format("Batch %s: %s to %s | Mode: %s | Size: %s | Records: %s | Malformed: %s",
                     rs.getObject("batch_id"),
                     rs.getString("batch_start_date"),
                     rs.getString("batch_end_date"),
+                    rs.getString("batch_mode"),
+                    rs.getObject("batch_size"),
                     rs.getObject("records_total"),
-                    rs.getObject("malformed_records"),
-                    rs.getObject("batch_size_days")));
+                    rs.getObject("malformed_records")));
             }
             if (!any) {
                 appendLine(sb, "No batch metadata found.");

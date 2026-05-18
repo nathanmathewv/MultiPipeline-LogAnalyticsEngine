@@ -3,7 +3,10 @@ CREATE TABLE IF NOT EXISTS run_metadata (
   id SERIAL PRIMARY KEY,
   run_id TEXT UNIQUE NOT NULL,
   pipeline_name TEXT NOT NULL,
+  batch_mode TEXT NOT NULL,
   batch_size INTEGER NOT NULL,
+  batch_size_days INTEGER,
+  batch_size_records INTEGER,
   avg_batch_size DOUBLE PRECISION,
   total_records BIGINT,
   malformed_records BIGINT,
@@ -35,7 +38,10 @@ CREATE TABLE IF NOT EXISTS batch_metadata (
   batch_id INTEGER NOT NULL,
   batch_start_date TEXT,
   batch_end_date TEXT,
+  batch_mode TEXT NOT NULL,
+  batch_size INTEGER NOT NULL,
   batch_size_days INTEGER,
+  batch_size_records INTEGER,
   records_total BIGINT,
   malformed_records BIGINT,
   created_at TIMESTAMP DEFAULT now()
@@ -49,3 +55,11 @@ CREATE TABLE IF NOT EXISTS malformed_summary (
   malformed_records BIGINT,
   created_at TIMESTAMP DEFAULT now()
 );
+
+-- Idempotent upgrades for databases created before batch modes were added.
+ALTER TABLE run_metadata ADD COLUMN IF NOT EXISTS batch_mode TEXT DEFAULT 'days';
+ALTER TABLE run_metadata ADD COLUMN IF NOT EXISTS batch_size_days INTEGER;
+ALTER TABLE run_metadata ADD COLUMN IF NOT EXISTS batch_size_records INTEGER;
+ALTER TABLE batch_metadata ADD COLUMN IF NOT EXISTS batch_mode TEXT DEFAULT 'days';
+ALTER TABLE batch_metadata ADD COLUMN IF NOT EXISTS batch_size INTEGER;
+ALTER TABLE batch_metadata ADD COLUMN IF NOT EXISTS batch_size_records INTEGER;

@@ -37,6 +37,11 @@ public class AppConfig {
         return ((Number) app.getOrDefault("batch_size_days", 1)).intValue();
     }
 
+    public String getBatchMode() {
+        Map<String, Object> app = getSection("app");
+        return (String) app.getOrDefault("batch_mode", "days");
+    }
+
     public String getDataDir() {
         Map<String, Object> app = getSection("app");
         return (String) app.getOrDefault("data_dir", "data/raw");
@@ -75,5 +80,10 @@ public class AppConfig {
     public String getPigScriptPath() {
         Map<String, Object> pig = getSection("pig");
         return (String) pig.getOrDefault("script", "app/pig/etl.pig");
+    }
+
+    public String getHiveScriptPath() {
+        Map<String, Object> hive = getSection("hive");
+        return (String) hive.getOrDefault("script", "app/hive/etl.hql");
     }
 }

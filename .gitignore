@@ -13,6 +13,7 @@ node_modules/
 dist/
 build/
 .gradle/
+results/
 postgres_data/
 mongo_data/
 

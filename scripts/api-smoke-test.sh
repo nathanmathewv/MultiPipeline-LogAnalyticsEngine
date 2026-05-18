@@ -8,6 +8,7 @@ set -euo pipefail
 
 SERVER_URL="${ETL_SERVER_URL:-http://localhost:8080}"
 TEST_FILE="${ETL_TEST_FILE:-sample.log}"
+TEST_BATCH_MODE="${ETL_TEST_BATCH_MODE:-records}"
 TEST_BATCH_SIZE="${ETL_TEST_BATCH_SIZE:-5}"
 
 function echo_step() {
@@ -50,6 +51,7 @@ function assert_contains() {
 echo "ETL API Smoke Tests"
 echo "Server: $SERVER_URL"
 echo "Test file: $TEST_FILE"
+echo "Batch mode: $TEST_BATCH_MODE"
 echo "Batch size: $TEST_BATCH_SIZE"
 
 # 1) List files
@@ -75,6 +77,7 @@ echo_step "POST /api/etl/run"
 read -r status body < <(http_post "$SERVER_URL/api/etl/run" \
   --data-urlencode "pipeline=mongodb" \
   --data-urlencode "file=$TEST_FILE" \
+  --data-urlencode "batchMode=$TEST_BATCH_MODE" \
   --data-urlencode "batchSize=$TEST_BATCH_SIZE")
 if [ "$status" != "200" ]; then
   fail "Expected HTTP 200, got $status"

@@ -1,11 +1,13 @@
 package com.example.multietl.orchestrator;
 
 import java.io.BufferedReader;
-// import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.GZIPInputStream;
 
 public class BatchManager {
     public interface BatchProcessor {
@@ -18,7 +20,7 @@ public class BatchManager {
         }
         List<String> chunk = new ArrayList<>(chunkSize);
         for (Path inputFile : inputFiles) {
-            try (BufferedReader reader = Files.newBufferedReader(inputFile, java.nio.charset.StandardCharsets.ISO_8859_1)) {
+            try (BufferedReader reader = openLogReader(inputFile)) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     chunk.add(line);
@@ -32,5 +34,13 @@ public class BatchManager {
         if (!chunk.isEmpty()) {
             processor.process(chunk);
         }
+    }
+
+    public static BufferedReader openLogReader(Path inputFile) throws Exception {
+        InputStream stream = Files.newInputStream(inputFile);
+        if (inputFile.getFileName().toString().toLowerCase().endsWith(".gz")) {
+            stream = new GZIPInputStream(stream);
+        }
+        return new BufferedReader(new InputStreamReader(stream, java.nio.charset.StandardCharsets.ISO_8859_1));
     }
 }

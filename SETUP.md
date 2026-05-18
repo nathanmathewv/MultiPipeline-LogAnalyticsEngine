@@ -53,7 +53,7 @@ Expected output:
 
 ### 6. Run Sample ETL
 ```bash
-java -cp target/classes:target/lib/* com.example.multietl.cli.Main mongodb data/raw/sample.log 5
+java -cp "target/classes;target/dependency/*" com.example.multietl.cli.Main mongodb data/raw/sample.log days 5
 ```
 
 Expected runtime: 1-3 seconds
@@ -130,7 +130,7 @@ kill -9 <PID>
 1. **Make code changes**
 2. **Compile**: `mvn compile`
 3. **Test**: `mvn test`
-4. **Run**: `java -cp target/classes:target/lib/* com.example.multietl.cli.Main [args]`
+4. **Run**: `java -cp "target/classes;target/dependency/*" com.example.multietl.cli.Main [args]`
 5. **Check results**:
    - PostgreSQL: `docker exec etl_postgres psql -U etl -d etl_results -c "SELECT * FROM run_metadata;"`
    - MongoDB: `docker exec etl_mongo mongosh`
@@ -144,7 +144,7 @@ kill -9 <PID>
 seq 1 1000000 | awk '{print "199.72.81.55 - - [01/Jul/1995:00:00:01 -0400] \"GET /resource"NR" HTTP/1.0\" 200 1024"}' > data/raw/large.log
 
 # Run with larger batch
-java -cp target/classes:target/lib/* com.example.multietl.cli.Main mongodb data/raw/large.log 10000
+java -cp "target/classes;target/dependency/*" com.example.multietl.cli.Main mongodb data/raw/large.log records 10000
 ```
 
 ## Next Steps

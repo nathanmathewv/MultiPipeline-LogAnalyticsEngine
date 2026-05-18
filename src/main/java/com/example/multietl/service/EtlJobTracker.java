@@ -1,5 +1,7 @@
 package com.example.multietl.service;
 
+import com.example.multietl.pipelines.base.BatchConfig;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,7 +36,10 @@ public class EtlJobTracker {
         public String jobId;
         public String pipeline;
         public String inputFile;
-        public int batchSizeDays;
+        public String batchMode;
+        public int batchSize;
+        public Integer batchSizeDays;
+        public Integer batchSizeRecords;
         public String status; // RUNNING, COMPLETED, FAILED
         public long startTime;
         public long endTime;
@@ -43,11 +48,14 @@ public class EtlJobTracker {
         public String errorMessage;
         public Map<String, Object> results;
 
-        public EtlJob(String jobId, String pipeline, String inputFile, int batchSizeDays) {
+        public EtlJob(String jobId, String pipeline, String inputFile, BatchConfig batchConfig) {
             this.jobId = jobId;
             this.pipeline = pipeline;
             this.inputFile = inputFile;
-            this.batchSizeDays = batchSizeDays;
+            this.batchMode = batchConfig.getModeKey();
+            this.batchSize = batchConfig.getSize();
+            this.batchSizeDays = batchConfig.getBatchSizeDays();
+            this.batchSizeRecords = batchConfig.getBatchSizeRecords();
             this.status = "RUNNING";
             this.startTime = System.currentTimeMillis();
         }
@@ -71,7 +79,10 @@ public class EtlJobTracker {
             map.put("jobId", jobId);
             map.put("pipeline", pipeline);
             map.put("inputFile", inputFile);
+            map.put("batchMode", batchMode);
+            map.put("batchSize", batchSize);
             map.put("batchSizeDays", batchSizeDays);
+            map.put("batchSizeRecords", batchSizeRecords);
             map.put("status", status);
             map.put("startTime", startTime);
             if (endTime > 0) {

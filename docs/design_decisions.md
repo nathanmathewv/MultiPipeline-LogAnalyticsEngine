@@ -15,21 +15,20 @@
 - More readable and maintainable
 - Performance adequate for 30,000+ log lines
 
-## 3. Batching in Orchestrator, Not DB
-**Decision**: Application splits file into batches before passing to pipeline  
+## 3. Batching in Pipelines
+**Decision**: The orchestrator streams raw ingest chunks, while each pipeline assigns analytical batches by day count or record count
 **Rationale**:
-- Pipelines don't need to implement batching logic
-- Consistent batch semantics across all implementations
+- Keeps loading, cleaning, batching, and query execution inside the selected pipeline boundary
+- Consistent batch semantics across all implementations through `BatchConfig`
 - Easier to test and debug
-- Allows adaptive batch sizing in future
-
-## 4. Single Parser Class for All Pipelines
-**Decision**: All pipelines use same LogParser.java  
+- Allows either date-window batches or fixed-record batches in the same CLI/API workflow
+## 4. Shared Canonical Parser for Java Pipelines
+**Decision**: MongoDB, MapReduce jobs, and the local Hive adapter use the same `LogParser.java`; Pig and Hive scripts perform equivalent parsing in `app/pig/etl.pig` and `app/hive/etl.hql`
 **Rationale**:
-- Eliminates duplicate parsing logic
-- Ensures consistency across pipelines
+- Eliminates duplicate parsing logic in Java adapters
+- Ensures consistency across Java-backed pipelines
+- Keeps Pig parsing inside Pig for demonstrations that require pipeline-owned loading and cleaning
 - Easier to update parsing rules in one place
-- Stubs (Pig, MR, Hive) don't need parser implementations
 
 ## 5. Pipeline Interface as Strategy Pattern
 **Decision**: Abstract Pipeline with concrete implementations, PipelineFactory for selection  
@@ -39,13 +38,12 @@
 - Clean separation of concerns
 - Easy to add new pipelines
 
-## 6. MongoDB-Only Parser Implementation
-**Decision**: MongoDB stores original line + parsed doc; others are stubs  
+## 6. Batch Metadata Columns
+**Decision**: Store `batch_mode`, generic `batch_size`, and mode-specific `batch_size_days` / `batch_size_records` columns
 **Rationale**:
-- Exercise full MongoDB aggregation pipeline
-- Demonstrates query distribution for other techs
-- Reduces implementation scope while showing extensibility
-- Stubs make it clear how other pipelines would work
+- Keeps the rubric-required batch size explicit
+- Makes day and record batching distinguishable in reports
+- Avoids overloading a day-count field with record-count values
 
 ## 7. PostgreSQL for Results, MongoDB for Raw Logs
 **Decision**: Separate stores for different data types  
@@ -155,7 +153,7 @@
 
 ## Tradeoffs
 
-- **Simplicity vs Flexibility**: Chose modular design even if Pig/MR/Hive remain stubs; allows future extension
+- **Simplicity vs Flexibility**: Chose modular design so Pig/MR/Hive can share a common reporting contract while still preserving pipeline-specific execution boundaries
 - **Schema Flexibility vs Strictness**: Single etl_results table supports 3+ queries; could create query-specific tables
 - **Manual Parse vs Regex**: More code but more maintainable
 - **Synchronous Orchestration**: Simple; streaming could improve for very large files

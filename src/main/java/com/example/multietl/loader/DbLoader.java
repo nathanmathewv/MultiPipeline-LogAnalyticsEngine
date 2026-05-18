@@ -1,5 +1,6 @@
 package com.example.multietl.loader;
 
+import com.example.multietl.pipelines.base.BatchConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,18 +25,21 @@ public class DbLoader {
         return DriverManager.getConnection(url, user, password);
     }
 
-    public void insertRunMetadata(String runId, String pipelineName, int batchSize, double avgBatchSize,
+    public void insertRunMetadata(String runId, String pipelineName, BatchConfig batchConfig, double avgBatchSize,
                                   long totalRecords, long malformedRecords, int totalBatches, long runtimeMs) throws SQLException {
-        String sql = "INSERT INTO run_metadata(run_id,pipeline_name,batch_size,avg_batch_size,total_records,malformed_records,total_batches,runtime_ms,created_at) VALUES(?,?,?,?,?,?,?,?,now())";
+        String sql = "INSERT INTO run_metadata(run_id,pipeline_name,batch_mode,batch_size,batch_size_days,batch_size_records,avg_batch_size,total_records,malformed_records,total_batches,runtime_ms,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,now())";
         try (Connection c = getConn(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, runId);
             ps.setString(2, pipelineName);
-            ps.setInt(3, batchSize);
-            ps.setDouble(4, avgBatchSize);
-            ps.setLong(5, totalRecords);
-            ps.setLong(6, malformedRecords);
-            ps.setInt(7, totalBatches);
-            ps.setLong(8, runtimeMs);
+            ps.setString(3, batchConfig.getModeKey());
+            ps.setInt(4, batchConfig.getSize());
+            setNullableInt(ps, 5, batchConfig.getBatchSizeDays());
+            setNullableInt(ps, 6, batchConfig.getBatchSizeRecords());
+            ps.setDouble(7, avgBatchSize);
+            ps.setLong(8, totalRecords);
+            ps.setLong(9, malformedRecords);
+            ps.setInt(10, totalBatches);
+            ps.setLong(11, runtimeMs);
             ps.executeUpdate();
             logger.info("Inserted run_metadata for {}", runId);
         }
@@ -73,11 +77,11 @@ public class DbLoader {
         }
     }
 
-    public void insertBatchMetadata(String runId, String pipelineName, int batchSizeDays, List<Map<String, Object>> summaries) throws SQLException {
+    public void insertBatchMetadata(String runId, String pipelineName, BatchConfig batchConfig, List<Map<String, Object>> summaries) throws SQLException {
         if (summaries == null || summaries.isEmpty()) {
             return;
         }
-        String sql = "INSERT INTO batch_metadata(run_id,pipeline_name,batch_id,batch_start_date,batch_end_date,batch_size_days,records_total,malformed_records,created_at) VALUES(?,?,?,?,?,?,?,?,now())";
+        String sql = "INSERT INTO batch_metadata(run_id,pipeline_name,batch_id,batch_start_date,batch_end_date,batch_mode,batch_size,batch_size_days,batch_size_records,records_total,malformed_records,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,now())";
         try (Connection c = getConn(); PreparedStatement ps = c.prepareStatement(sql)) {
             for (Map<String, Object> summary : summaries) {
                 ps.setString(1, runId);
@@ -85,9 +89,12 @@ public class DbLoader {
                 ps.setObject(3, summary.getOrDefault("batch_id", 0));
                 ps.setObject(4, summary.getOrDefault("batch_start_date", null));
                 ps.setObject(5, summary.getOrDefault("batch_end_date", null));
-                ps.setInt(6, batchSizeDays);
-                ps.setObject(7, summary.getOrDefault("records_total", null));
-                ps.setObject(8, summary.getOrDefault("malformed_records", null));
+                ps.setString(6, stringValue(summary.getOrDefault("batch_mode", batchConfig.getModeKey())));
+                ps.setInt(7, intValue(summary.getOrDefault("batch_size", batchConfig.getSize()), batchConfig.getSize()));
+                setNullableInt(ps, 8, integerValue(summary.getOrDefault("batch_size_days", batchConfig.getBatchSizeDays())));
+                setNullableInt(ps, 9, integerValue(summary.getOrDefault("batch_size_records", batchConfig.getBatchSizeRecords())));
+                ps.setObject(10, summary.getOrDefault("records_total", null));
+                ps.setObject(11, summary.getOrDefault("malformed_records", null));
                 ps.addBatch();
             }
             ps.executeBatch();
@@ -137,5 +144,32 @@ public class DbLoader {
         PreparedStatement ps = c.prepareStatement(sql);
         ps.setString(1, runId);
         return ps.executeQuery();
+    }
+
+    private void setNullableInt(PreparedStatement ps, int index, Integer value) throws SQLException {
+        if (value == null) {
+            ps.setNull(index, Types.INTEGER);
+        } else {
+            ps.setInt(index, value);
+        }
+    }
+
+    private Integer integerValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        return Integer.parseInt(value.toString());
+    }
+
+    private int intValue(Object value, int fallback) {
+        Integer parsed = integerValue(value);
+        return parsed == null ? fallback : parsed;
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : value.toString();
     }
 }
